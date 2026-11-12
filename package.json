@@ -1,0 +1,50 @@
+{
+  "name": "ontology-platform",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently -k -n web,api -c cyan,magenta \"npm:dev:web\" \"npm:dev:server\"",
+    "dev:web": "vite --port 5174 --strictPort",
+    "dev:server": "tsx watch server/index.ts",
+    "seed": "tsx server/seed.ts",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "tsx server/migrate.ts",
+    "build": "tsc && vite build",
+    "typecheck:server": "tsc -p server",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@hono/node-server": "^2.1.6",
+    "bcryptjs": "^3.0.3",
+    "better-sqlite3": "^13.0.3",
+    "drizzle-orm": "^0.45.4",
+    "hono": "^4.13.16",
+    "lucide-react": "^0.454.0",
+    "mammoth": "^1.13.0",
+    "nodemailer": "^10.3.1",
+    "pdfjs-dist": "^6.5.438",
+    "qrcode": "^1.5.4",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.28.0",
+    "recharts": "^2.13.3"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/better-sqlite3": "^9.6.0",
+    "@types/nodemailer": "^8.0.2",
+    "@types/qrcode": "^1.5.6",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.3",
+    "autoprefixer": "^10.4.20",
+    "concurrently": "^10.0.6",
+    "drizzle-kit": "^0.31.11",
+    "postcss": "^8.4.49",
+    "tailwindcss": "^3.4.14",
+    "tsx": "^4.23.15",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.10"
+  }
+}

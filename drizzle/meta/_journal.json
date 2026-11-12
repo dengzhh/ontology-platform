@@ -1,0 +1,62 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1793718669976,
+      "tag": "0000_bizarre_logan",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1793721427900,
+      "tag": "0001_heavy_otto_octavius",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1793765949858,
+      "tag": "0002_wakeful_squadron_supreme",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1793805475280,
+      "tag": "0003_damp_darkhawk",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1793874651126,
+      "tag": "0004_panoramic_sugar_man",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1793901515263,
+      "tag": "0005_loving_mordo",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1793902581653,
+      "tag": "0006_mature_lila_cheney",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1793964865800,
+      "tag": "0007_futuristic_purifiers",
+      "breakpoints": true
+    }
+  ]
+}

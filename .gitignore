@@ -1,0 +1,26 @@
+# 依赖与构建产物
+node_modules/
+dist/
+
+# 本地数据（含真实账号与 AI 网关密钥配置，严禁入库）
+data/
+*.db
+*.db-shm
+*.db-wal
+
+# 生成的外部演示库（python demo-data/build_external_db.py 可重建）
+demo-data/external/
+
+# 本地-only 参考文档与测试运行报告（不入库、不推送）
+docs/local-benchmark.md
+tests/last-run.json
+
+# 环境与密钥
+.env
+.env.*
+*.local
+
+# 系统与编辑器
+.DS_Store
+Thumbs.db
+*.log

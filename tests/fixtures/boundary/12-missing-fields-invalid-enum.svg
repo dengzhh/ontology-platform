@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="420" height="300" viewBox="0 0 420 300">
+  <!-- 缺少金额/日期，且类别是非法枚举：测试校验拦截 -->
+  <rect width="420" height="300" fill="#ffffff"/>
+  <text x="210" y="46" font-family="sans-serif" font-size="20" font-weight="bold" text-anchor="middle" fill="#111">不完整的消费记录</text>
+  <line x1="28" y1="62" x2="392" y2="62" stroke="#ccc"/>
+  <text x="28" y="100" font-family="sans-serif" font-size="15" fill="#333">商户：未知商户</text>
+  <text x="28" y="132" font-family="sans-serif" font-size="15" fill="#333">事由：买了一样东西</text>
+  <text x="28" y="164" font-family="sans-serif" font-size="15" fill="#333">消费类别：宇宙飞船燃料（非法枚举值）</text>
+  <text x="28" y="196" font-family="sans-serif" font-size="15" fill="#333">金额：未填写</text>
+  <text x="28" y="228" font-family="sans-serif" font-size="15" fill="#333">日期：未填写</text>
+  <text x="28" y="268" font-family="sans-serif" font-size="12" fill="#999">测试素材：用于验证必填校验与 enum 约束</text>
+</svg>

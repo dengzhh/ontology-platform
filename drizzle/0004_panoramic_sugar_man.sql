@@ -1,0 +1,1 @@
+ALTER TABLE `ai_conversations` ADD `space_id` text DEFAULT '' NOT NULL;

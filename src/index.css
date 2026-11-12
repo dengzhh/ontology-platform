@@ -1,0 +1,40 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  @apply bg-slate-100 text-slate-800 antialiased;
+  font-family: 'PingFang SC', 'Microsoft YaHei', 'Segoe UI', system-ui, -apple-system, sans-serif;
+}
+
+/* 细滚动条，统一观感 */
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-thumb {
+  @apply rounded-full bg-slate-300;
+}
+*::-webkit-scrollbar-thumb:hover {
+  @apply bg-slate-400;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* 通用卡片 */
+.card {
+  @apply rounded-xl border border-slate-200 bg-white shadow-card;
+}
+
+/* 虚线画布背景（用于流程/图谱画布） */
+.canvas-grid {
+  background-image: radial-gradient(circle, rgb(148 163 184 / 0.35) 1px, transparent 1px);
+  background-size: 20px 20px;
+}

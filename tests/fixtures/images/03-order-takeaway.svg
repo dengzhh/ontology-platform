@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="420" height="540" viewBox="0 0 420 540">
+  <rect width="420" height="540" fill="#f7f9fc"/>
+  <rect x="0" y="0" width="420" height="56" fill="#ff6a00"/>
+  <text x="20" y="36" font-family="sans-serif" font-size="19" font-weight="bold" fill="#fff">订单详情 · 已完成</text>
+  <text x="400" y="36" font-family="sans-serif" font-size="13" text-anchor="end" fill="#fff">星辰外卖</text>
+  <rect x="16" y="72" width="388" height="452" rx="10" fill="#ffffff" stroke="#e5e9f0"/>
+  <text x="32" y="102" font-family="sans-serif" font-size="14" fill="#333">订单号：WM2026110812345678</text>
+  <text x="32" y="128" font-family="sans-serif" font-size="13" fill="#777">下单时间：2026-11-08 18:42</text>
+  <line x1="32" y1="142" x2="388" y2="142" stroke="#eee"/>
+  <text x="32" y="170" font-family="sans-serif" font-size="16" font-weight="bold" fill="#222">湘味小厨（祖庙店）</text>
+  <line x1="32" y1="182" x2="388" y2="182" stroke="#eee"/>
+  <text x="32" y="212" font-family="sans-serif" font-size="14" fill="#333">剁椒鱼头</text>
+  <text x="388" y="212" font-family="sans-serif" font-size="14" text-anchor="end" fill="#333">68.00</text>
+  <text x="32" y="242" font-family="sans-serif" font-size="14" fill="#333">小炒黄牛肉</text>
+  <text x="388" y="242" font-family="sans-serif" font-size="14" text-anchor="end" fill="#333">46.00</text>
+  <text x="32" y="272" font-family="sans-serif" font-size="14" fill="#333">米饭 x2</text>
+  <text x="388" y="272" font-family="sans-serif" font-size="14" text-anchor="end" fill="#333">4.00</text>
+  <text x="32" y="302" font-family="sans-serif" font-size="14" fill="#333">配送费</text>
+  <text x="388" y="302" font-family="sans-serif" font-size="14" text-anchor="end" fill="#333">5.00</text>
+  <text x="32" y="332" font-family="sans-serif" font-size="14" fill="#e6552b">满减优惠</text>
+  <text x="388" y="332" font-family="sans-serif" font-size="14" text-anchor="end" fill="#e6552b">-15.00</text>
+  <line x1="32" y1="348" x2="388" y2="348" stroke="#ddd" stroke-dasharray="4 3"/>
+  <text x="32" y="382" font-family="sans-serif" font-size="17" font-weight="bold" fill="#111">实付金额</text>
+  <text x="388" y="382" font-family="sans-serif" font-size="20" font-weight="bold" text-anchor="end" fill="#ff6a00">108.00 元</text>
+  <line x1="32" y1="398" x2="388" y2="398" stroke="#eee"/>
+  <text x="32" y="426" font-family="sans-serif" font-size="13" fill="#777">支付方式：支付宝</text>
+  <text x="32" y="450" font-family="sans-serif" font-size="13" fill="#777">消费类别：餐饮（晚餐外卖）</text>
+  <text x="32" y="474" font-family="sans-serif" font-size="13" fill="#777">送达地址：佛山市禅城区 XX 大厦 12F</text>
+  <text x="32" y="506" font-family="sans-serif" font-size="12" fill="#aaa">感谢使用星辰外卖</text>
+</svg>

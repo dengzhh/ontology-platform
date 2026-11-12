@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="400" height="420" viewBox="0 0 400 420">
+  <rect width="400" height="420" fill="#ffffff"/>
+  <text x="200" y="42" font-family="sans-serif" font-size="22" font-weight="bold" text-anchor="middle" fill="#111111">星辰便利店</text>
+  <text x="200" y="68" font-family="sans-serif" font-size="14" text-anchor="middle" fill="#555555">2026-11-06 12:35</text>
+  <line x1="30" y1="84" x2="370" y2="84" stroke="#cccccc"/>
+  <text x="30" y="118" font-family="sans-serif" font-size="16" fill="#222222">可口可乐 500ml      6.00</text>
+  <text x="30" y="150" font-family="sans-serif" font-size="16" fill="#222222">盒饭 红烧牛肉       28.00</text>
+  <text x="30" y="182" font-family="sans-serif" font-size="16" fill="#222222">矿泉水 550ml        2.00</text>
+  <line x1="30" y1="205" x2="370" y2="205" stroke="#cccccc"/>
+  <text x="30" y="242" font-family="sans-serif" font-size="20" font-weight="bold" fill="#111111">合计 36.00 元</text>
+  <text x="30" y="278" font-family="sans-serif" font-size="14" fill="#555555">支付方式 微信支付</text>
+  <text x="30" y="310" font-family="sans-serif" font-size="14" fill="#555555">商户 星辰便利店 佛山店</text>
+  <text x="30" y="360" font-family="sans-serif" font-size="12" fill="#999999">谢谢惠顾</text>
+</svg>

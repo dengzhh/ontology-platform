@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="420" height="560" viewBox="0 0 420 560">
+  <rect width="420" height="560" fill="#fffdf8"/>
+  <rect x="0" y="0" width="420" height="8" fill="#e8e2d4"/>
+  <text x="210" y="52" font-family="sans-serif" font-size="24" font-weight="bold" text-anchor="middle" fill="#1a1a1a">星辰便利店（佛山祖庙店）</text>
+  <text x="210" y="78" font-family="sans-serif" font-size="13" text-anchor="middle" fill="#666">地址：佛山市禅城区祖庙路 18 号</text>
+  <text x="210" y="100" font-family="sans-serif" font-size="13" text-anchor="middle" fill="#666">单号：XS2026110800123</text>
+  <line x1="28" y1="116" x2="392" y2="116" stroke="#bbb" stroke-dasharray="4 3"/>
+  <text x="28" y="146" font-family="sans-serif" font-size="14" fill="#333">品名</text>
+  <text x="300" y="146" font-family="sans-serif" font-size="14" text-anchor="end" fill="#333">数量</text>
+  <text x="392" y="146" font-family="sans-serif" font-size="14" text-anchor="end" fill="#333">金额</text>
+  <line x1="28" y1="156" x2="392" y2="156" stroke="#ddd"/>
+  <text x="28" y="184" font-family="sans-serif" font-size="15" fill="#222">可口可乐 500ml</text>
+  <text x="300" y="184" font-family="sans-serif" font-size="15" text-anchor="end" fill="#222">2</text>
+  <text x="392" y="184" font-family="sans-serif" font-size="15" text-anchor="end" fill="#222">12.00</text>
+  <text x="28" y="214" font-family="sans-serif" font-size="15" fill="#222">红烧牛肉盒饭</text>
+  <text x="300" y="214" font-family="sans-serif" font-size="15" text-anchor="end" fill="#222">1</text>
+  <text x="392" y="214" font-family="sans-serif" font-size="15" text-anchor="end" fill="#222">28.00</text>
+  <text x="28" y="244" font-family="sans-serif" font-size="15" fill="#222">矿泉水 550ml</text>
+  <text x="300" y="244" font-family="sans-serif" font-size="15" text-anchor="end" fill="#222">1</text>
+  <text x="392" y="244" font-family="sans-serif" font-size="15" text-anchor="end" fill="#222">2.00</text>
+  <text x="28" y="274" font-family="sans-serif" font-size="15" fill="#222">一次性餐具</text>
+  <text x="300" y="274" font-family="sans-serif" font-size="15" text-anchor="end" fill="#222">1</text>
+  <text x="392" y="274" font-family="sans-serif" font-size="15" text-anchor="end" fill="#222">1.00</text>
+  <line x1="28" y1="292" x2="392" y2="292" stroke="#bbb" stroke-dasharray="4 3"/>
+  <text x="28" y="324" font-family="sans-serif" font-size="15" fill="#555">小计</text>
+  <text x="392" y="324" font-family="sans-serif" font-size="15" text-anchor="end" fill="#555">43.00</text>
+  <text x="28" y="352" font-family="sans-serif" font-size="15" fill="#555">优惠</text>
+  <text x="392" y="352" font-family="sans-serif" font-size="15" text-anchor="end" fill="#555">-3.00</text>
+  <text x="28" y="392" font-family="sans-serif" font-size="21" font-weight="bold" fill="#111">合计（实付）</text>
+  <text x="392" y="392" font-family="sans-serif" font-size="21" font-weight="bold" text-anchor="end" fill="#111">40.00 元</text>
+  <line x1="28" y1="408" x2="392" y2="408" stroke="#ddd"/>
+  <text x="28" y="438" font-family="sans-serif" font-size="14" fill="#555">消费日期：2026-11-08 12:35</text>
+  <text x="28" y="464" font-family="sans-serif" font-size="14" fill="#555">支付方式：微信支付</text>
+  <text x="28" y="490" font-family="sans-serif" font-size="14" fill="#555">消费类别：餐饮（午餐）</text>
+  <text x="210" y="528" font-family="sans-serif" font-size="12" text-anchor="middle" fill="#999">谢谢惠顾 · 欢迎再次光临</text>
+</svg>

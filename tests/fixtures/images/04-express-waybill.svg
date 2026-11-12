@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="440" height="420" viewBox="0 0 440 420">
+  <rect width="440" height="420" fill="#ffffff"/>
+  <rect x="16" y="16" width="408" height="388" fill="none" stroke="#1f2937" stroke-width="2"/>
+  <text x="32" y="52" font-family="sans-serif" font-size="22" font-weight="bold" fill="#111">顺丰速运　SF EXPRESS</text>
+  <text x="408" y="52" font-family="sans-serif" font-size="14" text-anchor="end" fill="#555">快递面单</text>
+  <line x1="32" y1="64" x2="408" y2="64" stroke="#1f2937" stroke-width="2"/>
+  <text x="32" y="98" font-family="sans-serif" font-size="15" font-weight="bold" fill="#111">运单号：SF1234567890123</text>
+  <text x="32" y="126" font-family="sans-serif" font-size="13" fill="#555">寄件日期：2026-11-08</text>
+  <line x1="32" y1="140" x2="408" y2="140" stroke="#ccc" stroke-dasharray="4 3"/>
+  <text x="32" y="170" font-family="sans-serif" font-size="13" fill="#777">寄件人</text>
+  <text x="32" y="194" font-family="sans-serif" font-size="16" fill="#222">广州文博办公用品有限公司</text>
+  <text x="32" y="218" font-family="sans-serif" font-size="13" fill="#555">广州市天河区体育西路 88 号　020-88886666</text>
+  <line x1="32" y1="232" x2="408" y2="232" stroke="#eee"/>
+  <text x="32" y="262" font-family="sans-serif" font-size="13" fill="#777">收件人</text>
+  <text x="32" y="286" font-family="sans-serif" font-size="16" fill="#222">星辰智造集团 · 陈星野</text>
+  <text x="32" y="310" font-family="sans-serif" font-size="13" fill="#555">佛山市禅城区季华五路 18 号　138****6688</text>
+  <line x1="32" y1="324" x2="408" y2="324" stroke="#eee"/>
+  <text x="32" y="354" font-family="sans-serif" font-size="14" fill="#333">托寄物：办公打印纸 A4（5 箱）</text>
+  <text x="32" y="378" font-family="sans-serif" font-size="14" fill="#333">运费：23.00 元　付款方式：寄付</text>
+  <text x="408" y="378" font-family="sans-serif" font-size="12" text-anchor="end" fill="#999">测试用虚构面单</text>
+</svg>

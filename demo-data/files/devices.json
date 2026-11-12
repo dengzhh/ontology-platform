@@ -1,0 +1,51 @@
+{
+  "objectTypes": [
+    {
+      "name": "DEMO_JSON设备",
+      "apiName": "DemoJsonDevice",
+      "properties": [
+        {
+          "key": "code",
+          "name": "编号",
+          "type": "string",
+          "required": true
+        },
+        {
+          "key": "name",
+          "name": "名称",
+          "type": "string"
+        },
+        {
+          "key": "health",
+          "name": "健康度",
+          "type": "number"
+        },
+        {
+          "key": "status",
+          "name": "状态",
+          "type": "enum",
+          "enumValues": [
+            "运行",
+            "待机",
+            "维修",
+            "停机"
+          ]
+        }
+      ]
+    }
+  ],
+  "objects": [
+    {
+      "code": "DEMO_JSON-001",
+      "name": "演示设备一",
+      "health": 88,
+      "status": "运行"
+    },
+    {
+      "code": "DEMO_JSON-002",
+      "name": "演示设备二",
+      "health": 52,
+      "status": "维修"
+    }
+  ]
+}
