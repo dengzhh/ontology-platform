@@ -215,6 +215,7 @@ tests/ · demo-data/            # 冒烟/契约/清单/E2E 剧本/扫描素材 �
 
 - 演示数据为虚构企业「星辰智造集团」与个人生活模板包；`src/mocks/*` 仅供 seed 使用，页面运行时一律走 API
 - 所有文案为简体中文；开发规范见 [CONVENTIONS.md](./CONVENTIONS.md)
+- **完整技术文档**：[docs/TECHNICAL-GUIDE.md](./docs/TECHNICAL-GUIDE.md) —— 42 个模块逐个说明「功能 / 实现原理 / 能力边界 / 验证方式」，含 25 张真实截图、架构分层、横切能力与边界总表
 - 本项目单进程零运维设计，适合本地部署、私有化演示与二次开发
 
 <div align="center">
