@@ -497,6 +497,27 @@ async function main() {
         const b = await req('GET', `/api/dashboard/aggregate?typeId=${t.id}&groupBy=${dateProp.key}&metric=${numKey}&bucket=month&from=2000-01-01&to=2099-12-31`)
         log(b.ok && b.data?.applied?.bucket === 'month', 'aggregate bucket=month + from/to 生效', b.ok ? `applied=${JSON.stringify(b.data.applied)}` : `status=${b.status}`)
       }
+      // ChatBI v2：时间序列默认升序 / TOP-N / 同比环比窗口结构（丰富数据断言在 load.mjs）
+      const ord = types.data?.types?.find((x) => x.id === 'order')
+      if (ord) {
+        const trend = await req('GET', '/api/dashboard/aggregate?typeId=order&groupBy=date&metric=amount&bucket=month')
+        const tgs = trend.data?.groups ?? []
+        log(trend.ok && tgs.length >= 1 && tgs.every((g, i) => i === 0 || g.name > tgs[i - 1].name), 'aggregate 时间序列默认按时间升序（趋势图）', `groups=${tgs.length}`)
+        const top = await req('GET', '/api/dashboard/aggregate?typeId=order&groupBy=status&metric=amount&top=3')
+        const tpg = top.data?.groups ?? []
+        log(top.ok && tpg.length <= 3 && Number(top.data?.applied?.top) === 3, 'aggregate top=3 TOP-N 截取（按金额降序）', `groups=${tpg.length}`)
+        const nowD = new Date()
+        const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+        const win = `from=${iso(new Date(nowD.getFullYear(), nowD.getMonth() - 1, 1))}&to=${iso(new Date(nowD.getFullYear(), nowD.getMonth(), 0))}`
+        const cmpPrev = await req('GET', `/api/dashboard/aggregate?typeId=order&groupBy=date&metric=amount&${win}&compare=prev`)
+        const cp = cmpPrev.data?.compare
+        log(cmpPrev.ok && cp?.mode === 'prev' && !!cp.current?.from && !!cp.previous?.from && typeof cp.delta === 'number' && (cp.deltaPct === null || typeof cp.deltaPct === 'number'), 'aggregate compare=prev 环比（紧邻等长上期窗口）', cp ? `本期${cp.current.sum} vs 上期${cp.previous.sum}（${cp.current.from}~${cp.current.to} vs ${cp.previous.from}~${cp.previous.to}）` : '')
+        const cmpYoy = await req('GET', `/api/dashboard/aggregate?typeId=order&groupBy=date&metric=amount&${win}&compare=yoy`)
+        const cy = cmpYoy.data?.compare
+        log(cmpYoy.ok && cy?.mode === 'yoy' && cy.previous?.from < cy.current?.from, 'aggregate compare=yoy 同比（去年同期窗口）', cy ? `${cy.current.from} vs ${cy.previous.from}` : '')
+      }
+      const badCmp = await req('GET', `/api/dashboard/aggregate?typeId=${t.id}&groupBy=${encodeURIComponent(t.properties[0].key)}&compare=prev`, undefined, 400)
+      log(badCmp.ok, 'aggregate compare 缺 from/to 返回 400 并给出用法提示', badCmp.ok ? String(badCmp.data?.error ?? '').slice(0, 60) : `status=${badCmp.status}`)
     } else log(false, '存在带数值属性的类型（前置条件）', '未找到')
   }
 

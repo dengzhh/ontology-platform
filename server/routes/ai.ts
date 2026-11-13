@@ -304,7 +304,7 @@ function buildSystemPrompt(user: SessionUser, page: string, spaceName: string, s
     '工作准则：',
     '1. 涉及打开/查看某页面 → 调用 navigate；查询业务对象明细 → query_objects；了解本体 → ontology_overview；管理用户 → list_users / invite_user。',
     '2. 【系统用法类优先】用户问「某功能在哪儿配置 / 怎么用 / 什么是某概念 / 平台怎么设置」等**关于本平台操作方法**的问题 → 依据上方「平台功能入口对照」直接给出页面路径与一句话说明，并调用 navigate 跳到对应页面；**不要调用 analyze_objects / search_knowledge / query_objects 等数据工具**（这类问题不是查业务数据，也不是查知识库文档）。',
-    '3. 【ChatBI】问「各/按…统计、多少、占比、趋势、最多/最大、平均、分布、画个图」等分析类问题 → 必须调用 analyze_objects（选 typeId、groupBy，有金额类问题带 metric，问趋势带 bucket=month），基于真实聚合结果回答；不要只列原始对象。',
+    '3. 【ChatBI】问「各/按…统计、多少、占比、趋势、最多/最大、平均、分布、画个图、TOP几、环比、同比」等分析类问题 → 必须调用 analyze_objects（选 typeId、groupBy，有金额类问题带 metric，问趋势带 bucket=month），基于真实聚合结果回答；不要只列原始对象。问「TOP N / 前N大」带 top=N；问「环比」带 compare=prev、问「同比」带 compare=yoy，并同时给 from/to 当期窗口（如问环比上月 → from/to 为上个完整月的起止日）；回答对比类问题时必须给出本期值、上期值与增减百分比。',
     '4. 制度、流程、规范、故障处理等「文档里怎么写」的问题 → 必须先调用 search_knowledge 检索知识库，并基于检索结果回答、注明来源文档。',
     '5. 需要改数据时 → list_actions 查看可用动作，再用 execute_action 执行（需审批的会提示）。',
     '6. 【高级能力】场景/合并→manage_scenario；对象集比较→compare_objects；派生属性→eval_derived；部署/晋升/回滚→apollo_deploy；时序采集→collect_timeseries；外部数据源→sync_source；审批→decide_approval；空间→space_action；函数→run_function；管道→run_pipeline；排程→get_schedule；治理→governance_scan。按用户意图直接调用对应工具，不要绕去 navigate 或查数据。',
@@ -395,7 +395,7 @@ function localAnswer(user: SessionUser, text: string, spaceId: string): LlmResul
   if (/(采集.*时序|时序采集|真实曲线)/.test(t)) return { reply: '', toolCalls: [{ id: 'local-ts', name: 'collect_timeseries', args: { valueKey: 'health' } }] }
 
   // ChatBI 聚合分析（本地引擎兜底）：命中分析问法 + 类型别名时调用 analyze_objects
-  const ANALYZE_RE = /(统计|聚合|占比|分布|趋势|各.*(多少|花费|金额)|按.*(统计|分组|分析|汇总)|最多|最大|平均|画个图|图表)/
+  const ANALYZE_RE = /(统计|聚合|占比|分布|趋势|各.*(多少|花费|金额)|按.*(统计|分组|分析|汇总)|最多|最大|平均|画个图|图表|TOP\s*\d|前\s*\d+\s*[个条名])/
   if (ANALYZE_RE.test(t)) {
     const hit = Object.keys(TYPE_ALIASES).find((k) => t.includes(k))
     // 没带类型词但明显是消费/金额类问法时，兜底用 expense（组织空间会由前端字段归一给出可用字段）
@@ -407,9 +407,27 @@ function localAnswer(user: SessionUser, text: string, spaceId: string): LlmResul
       else if (/(按|各)(状态)/.test(t)) groupBy = 'status'
       else if (/(按|各)(支付方式)/.test(t)) groupBy = 'payment'
       else if (/(按|各)(优先级)/.test(t)) groupBy = 'priority'
+      else if (/(设备|机器)/.test(t) && /TOP|前\s*\d|最大|最多/.test(t)) groupBy = 'name'
       const args: Record<string, unknown> = { typeId: type, groupBy }
       if (/(金额|花费|花了|总额|营收|收入|销售额|均价|平均)/.test(t)) args.metric = 'amount'
+      if (/(停机)/.test(t)) args.metric = 'downtime'
       if (/(趋势|按月|每月|月份)/.test(t)) args.bucket = 'month'
+      // TOP-N：TOP5 / 前 3 个 / 最大 5
+      const topM = t.match(/TOP\s*(\d+)|前\s*(\d+)\s*[个条名大]|最大[的]?\s*(\d+)/i)
+      if (topM) args.top = Number(topM[1] ?? topM[2] ?? topM[3])
+      // 同比/环比：compare + 当期窗口默认取「上个完整月」
+      if (/(环比|上月比|比上个月|上一期)/.test(t)) args.compare = 'prev'
+      if (/(同比|比去年|去年同期)/.test(t)) args.compare = 'yoy'
+      if (args.compare) {
+        const now = new Date()
+        const mEnd = new Date(now.getFullYear(), now.getMonth(), 0)           // 上月最后一天
+        const mStart = new Date(now.getFullYear(), now.getMonth() - 1, 1)     // 上月第一天
+        const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+        args.from = iso(mStart)
+        args.to = iso(mEnd)
+        // 对比类问题按月聚合更有信息量
+        if (!args.bucket && groupBy !== 'date') { args.groupBy = 'date'; args.bucket = 'month' }
+      }
       return { reply: '', toolCalls: [{ id: 'local-an', name: 'analyze_objects', args }] }
     }
   }

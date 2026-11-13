@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { Bot, X, Wrench, FileSearch, User, Send, Loader2, Sparkles } from 'lucide-react'
+import { LineChart, Line, XAxis, YAxis, Tooltip, PieChart, Pie, Cell } from 'recharts'
 import { useUI } from '@/store/ui'
 import { Badge } from '@/components/ui/Badge'
 import { ALL_NAV_ITEMS } from '@/config/nav'
@@ -9,8 +10,17 @@ import { cn } from '@/lib/utils'
 
 /** ChatBI 聚合结果（对话内迷你图表用）；groupBy/metric 与后端 /dashboard/aggregate 一致为 {key,name} */
 interface ChartData { name: string; sum: number; count: number; avg: number }
+/** 同比/环比对比块（/aggregate?compare=prev|yoy 返回） */
+interface AnalysisCompare {
+  mode: 'prev' | 'yoy'
+  current: { from: string; to: string; objects: number; sum: number; avg: number; count: number }
+  previous: { from: string; to: string; objects: number; sum: number; avg: number; count: number }
+  delta: number
+  deltaPct: number | null
+}
 interface AnalysisResult {
   groups: ChartData[]
+  compare?: AnalysisCompare | null
   groupBy: { key: string; name: string }
   metric: { key: string; name: string } | null
   total: number
@@ -41,13 +51,17 @@ function suggestionsFor(spaceId: string): string[] {
   return SUGGESTIONS_BY_SPACE.org
 }
 
-/** 快捷示例：按空间类型给出不同侧重点，覆盖全部工具能力（导航/明细/概览/ChatBI/知识/动作/用户/系统用法/函数/管道/排程/治理） */
+/** 快捷示例：按空间类型给出不同侧重点，覆盖全部工具能力（导航/明细/概览/ChatBI 含趋势环比同比TOP/知识/动作/用户/系统用法/函数/管道/排程/治理） */
 const SUGGESTIONS_BY_SPACE: Record<string, string[]> = {
   org: [
     '打开 对象浏览器',
     '查询设备 "M-2041"',
     '本体概览',
     '按状态统计设备数量',
+    '近 12 个月订单金额趋势',
+    '订单金额环比上月',
+    '订单金额同比去年',
+    '停机时长 TOP5 设备',
     '维修工单怎么处理',
     '有哪些动作',
     '查看当前排程与利用率',
@@ -60,6 +74,8 @@ const SUGGESTIONS_BY_SPACE: Record<string, string[]> = {
   personal: [
     '按类别统计支出金额',
     '按月统计消费趋势',
+    '消费金额环比上月',
+    '花销最大的 5 个类别',
     '记一笔支出 午饭 28 元',
     '查询支出 "房租"',
     '本体概览',
@@ -184,18 +200,35 @@ export default function AssistPanel() {
         if (!groupBy || !valid(groupBy)) {
           return `分组字段「${String(args.groupBy ?? '')}」不是「${t.name}」的合法属性。该类型可用字段：${props.map((p) => `${p.name}(${p.key})`).join('、')}。请用这些 key 之一重试，或省略 groupBy 改用「按笔数统计」类问法。`
         }
-        const q = new URLSearchParams({ typeId: t.id, groupBy, sort: 'sum', order: 'desc' })
+        // 不显式传 sort/order：让服务端按场景默认（时间序列升序 / 其余按 sum 降序）
+        const q = new URLSearchParams({ typeId: t.id, groupBy })
         if (metric && valid(metric)) q.set('metric', metric)
-        for (const k of ['bucket', 'from', 'to'] as const) {
+        // 兜底：按日期属性分组但模型漏传 bucket 时，默认按月分桶（避免按天爆炸成海量组）
+        if (!args.bucket && props.find((p) => p.key === groupBy && p.type === 'date')) q.set('bucket', 'month')
+        for (const k of ['bucket', 'from', 'to', 'compare'] as const) {
           const v = args[k]
           if (v) q.set(k, String(v))
         }
+        if (args.top) q.set('top', String(Math.max(1, Math.min(50, Number(args.top) || 5))))
         const r = await api<AnalysisResult & { error?: string }>(`/dashboard/aggregate?${q}`)
         if (r.error) return `分析失败：${r.error}`
-        lastAnalysis.current = { groups: r.groups ?? [], groupBy: r.groupBy, metric: r.metric, total: r.total, applied: r.applied ?? {} }
+        lastAnalysis.current = { groups: r.groups ?? [], groupBy: r.groupBy, metric: r.metric, total: r.total, applied: r.applied ?? {}, compare: r.compare ?? undefined }
         const label = r.metric ? r.metric.name : '笔数'
-        const lines = (r.groups ?? []).slice(0, 10).map((g, i) => `${i + 1}. ${g.name}：${r.metric ? g.sum : g.count} ${label}（${g.count} 条，均值 ${g.avg}）`)
-        return `「${t.name}」按 ${r.groupBy.name} 分组聚合（共 ${r.total} 个对象，${r.groups?.length ?? 0} 组，按${label}降序）：\n${lines.join('\n')}\n\n请基于以上真实聚合结果回答，并说明是哪一维度的统计。`
+        const topSuffix = r.applied?.top ? `，取 TOP${String(r.applied.top)}` : ''
+        // 时间序列（升序）给最近 12 组并注明，避免 LLM 只总结到最早的旧数据；其余取前 10（降序最大优先）
+        const isTs = !!r.applied?.bucket
+        const listed = isTs ? (r.groups ?? []).slice(-12) : (r.groups ?? []).slice(0, 10)
+        const tsNote = isTs && (r.groups?.length ?? 0) > listed.length ? `（时间升序共 ${r.groups.length} 组，以上为最近 ${listed.length} 组）` : ''
+        const lines = listed.map((g, i) => `${i + 1}. ${g.name}：${r.metric ? g.sum : g.count} ${label}（${g.count} 条，均值 ${g.avg}）`)
+        let cmpLine = ''
+        if (r.compare) {
+          const cmp = r.compare
+          const v = (o: AnalysisCompare['current']) => (r.metric ? o.sum : o.count)
+          const prevName = cmp.mode === 'yoy' ? '去年同期' : '上一期'
+          const pct = cmp.deltaPct === null ? '上期无数据，无法算增减幅' : `${cmp.deltaPct >= 0 ? '增长' : '下降'} ${Math.abs(cmp.deltaPct)}%`
+          cmpLine = `\n${cmp.mode === 'yoy' ? '同比' : '环比'}（当期 ${cmp.current.from}~${cmp.current.to}，${prevName} ${cmp.previous.from}~${cmp.previous.to}）：本期 ${v(cmp.current)} vs ${prevName} ${v(cmp.previous)}，${pct}。\n请明确给出本期值、上期值与增减百分比。`
+        }
+        return `「${t.name}」按 ${r.groupBy.name} 分组聚合（共 ${r.total} 个对象，${r.groups?.length ?? 0} 组${topSuffix}）：\n${lines.join('\n')}${tsNote}${cmpLine}\n\n请基于以上真实聚合结果回答，并说明是哪一维度的统计。`
       }
       if (name === 'run_function') {
         // 按名/中文名找函数（已发布或最新版本），真实沙箱执行
@@ -532,33 +565,84 @@ export default function AssistPanel() {
                     ))}
                   </div>
                 )}
-                {/* ChatBI：对话内迷你柱图 + 明细表 */}
-                {m.analysis && (
-                  <div className="w-[320px] max-w-full rounded-xl border border-brand-100 bg-white p-3 shadow-sm">
-                    <div className="mb-2 flex items-center justify-between text-[11px]">
-                      <span className="font-semibold text-slate-700">📊 按{m.analysis.groupBy.name}聚合</span>
-                      <span className="text-slate-400">{m.analysis.total} 个对象 · {m.analysis.groups.length} 组</span>
-                    </div>
-                    <div className="space-y-1.5">
-                      {m.analysis.groups.slice(0, 8).map((g, j) => {
-                        const value = m.analysis!.metric ? g.sum : g.count
-                        const max = Math.max(1, ...m.analysis!.groups.slice(0, 8).map((x) => (m.analysis!.metric ? x.sum : x.count)))
-                        return (
-                          <div key={j} className="flex items-center gap-1.5">
-                            <span className="w-16 shrink-0 truncate text-[10px] text-slate-500" title={g.name}>{g.name}</span>
-                            <span className="h-3.5 flex-1 overflow-hidden rounded bg-slate-100">
-                              <span className="block h-full rounded bg-gradient-to-r from-brand-500 to-violet-500" style={{ width: `${Math.max(3, (value / max) * 100)}%` }} />
+                {/* ChatBI：对话内图表（自动选择：时间趋势→折线图 / 枚举占比→饼图 / 其余→条形图）+ 同比环比对比卡 */}
+                {m.analysis && (() => {
+                  const a = m.analysis
+                  const val = (g: ChartData) => (a.metric ? g.sum : g.count)
+                  const isTime = !!a.applied?.bucket
+                  // 时间序列（升序）展示最近 12 组；其余展示前 8 组（降序最大优先），与给 LLM 的文本口径一致
+                  const shown = isTime ? a.groups.slice(-12) : a.groups.slice(0, 8)
+                  const isPie = !a.metric && !isTime && shown.length >= 2 && shown.length <= 6
+                  const max = Math.max(1, ...shown.map(val))
+                  const cmp = a.compare
+                  const cmpVal = (o: AnalysisCompare['current']) => (a.metric ? o.sum : o.count)
+                  const pieColors = ['#6366f1', '#8b5cf6', '#06b6d4', '#10b981', '#f59e0b', '#ef4444']
+                  return (
+                    <div className="w-[320px] max-w-full rounded-xl border border-brand-100 bg-white p-3 shadow-sm">
+                      <div className="mb-2 flex items-center justify-between text-[11px]">
+                        <span className="font-semibold text-slate-700">
+                          {isTime ? '📈 按月趋势' : isPie ? '🥧 占比分布' : '📊 聚合'} · {a.groupBy.name}{a.applied?.top ? ` · TOP${String(a.applied.top)}` : ''}
+                        </span>
+                        <span className="text-slate-400">{a.total} 个对象 · {a.groups.length} 组</span>
+                      </div>
+                      {cmp && (
+                        <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg bg-slate-50 px-2.5 py-2 text-[11px] text-slate-600">
+                          <span className="font-semibold text-slate-700">{cmp.mode === 'yoy' ? '同比' : '环比'}</span>
+                          <span>本期 <b className="font-mono">{cmpVal(cmp.current)}</b></span>
+                          <span className="text-slate-400">{cmp.mode === 'yoy' ? '去年同期' : '上一期'} <b className="font-mono">{cmpVal(cmp.previous)}</b></span>
+                          {cmp.deltaPct === null ? <span className="text-slate-400">上期无数据</span> : (
+                            <span className={cmp.deltaPct >= 0 ? 'font-semibold text-emerald-600' : 'font-semibold text-red-500'}>
+                              {cmp.deltaPct >= 0 ? '↑' : '↓'} {Math.abs(cmp.deltaPct)}%
                             </span>
-                            <span className="w-14 shrink-0 text-right font-mono text-[10px] font-semibold text-slate-700">{Math.round(value * 100) / 100}</span>
+                          )}
+                        </div>
+                      )}
+                      {isTime ? (
+                        <div className="h-[130px] w-full">
+                          <LineChart width={292} height={130} data={shown.map((g) => ({ name: g.name, value: val(g) }))} margin={{ top: 6, right: 8, bottom: 0, left: 8 }}>
+                            <XAxis dataKey="name" tick={{ fontSize: 9, fill: '#94a3b8' }} interval="preserveStartEnd" tickLine={false} axisLine={{ stroke: '#e2e8f0' }} />
+                            <YAxis hide />
+                            <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid #e2e8f0' }} />
+                            <Line type="monotone" dataKey="value" stroke="#6366f1" strokeWidth={2} dot={false} isAnimationActive={false} />
+                          </LineChart>
+                        </div>
+                      ) : isPie ? (
+                        <div className="flex items-center gap-2">
+                          <PieChart width={110} height={110}>
+                            <Pie data={shown.map((g) => ({ name: g.name, value: val(g) }))} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={26} outerRadius={50} isAnimationActive={false}>
+                              {shown.map((_, j) => <Cell key={j} fill={pieColors[j % pieColors.length]} />)}
+                            </Pie>
+                            <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid #e2e8f0' }} />
+                          </PieChart>
+                          <div className="flex-1 space-y-1">
+                            {shown.map((g, j) => (
+                              <div key={j} className="flex items-center gap-1.5 text-[10px]">
+                                <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: pieColors[j % pieColors.length] }} />
+                                <span className="flex-1 truncate text-slate-600" title={g.name}>{g.name}</span>
+                                <span className="font-mono font-semibold text-slate-700">{val(g)}</span>
+                              </div>
+                            ))}
                           </div>
-                        )
-                      })}
+                        </div>
+                      ) : (
+                        <div className="space-y-1.5">
+                          {shown.map((g, j) => (
+                            <div key={j} className="flex items-center gap-1.5">
+                              <span className="w-16 shrink-0 truncate text-[10px] text-slate-500" title={g.name}>{g.name}</span>
+                              <span className="h-3.5 flex-1 overflow-hidden rounded bg-slate-100">
+                                <span className="block h-full rounded bg-gradient-to-r from-brand-500 to-violet-500" style={{ width: `${Math.max(3, (val(g) / max) * 100)}%` }} />
+                              </span>
+                              <span className="w-14 shrink-0 text-right font-mono text-[10px] font-semibold text-slate-700">{Math.round(val(g) * 100) / 100}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      <div className="mt-2 border-t border-slate-100 pt-1.5 text-[10px] text-slate-400">
+                        指标：{a.metric ? a.metric.name + '总和' : '实例笔数'}{a.applied?.bucket ? ` · 按${String(a.applied.bucket)}分桶` : ''}{a.applied?.from ? ` · ${String(a.applied.from)}~${String(a.applied.to)}` : ''} · 来源 /dashboard/aggregate
+                      </div>
                     </div>
-                    <div className="mt-2 border-t border-slate-100 pt-1.5 text-[10px] text-slate-400">
-                      指标：{m.analysis.metric ? m.analysis.metric.name + '总和' : '实例笔数'}{m.analysis.applied?.bucket ? ` · 按${m.analysis.applied.bucket}分桶` : ''} · 来源 /dashboard/aggregate
-                    </div>
-                  </div>
-                )}
+                  )
+                })()}
                 {m.content && (
                   <div className={cn('whitespace-pre-wrap rounded-xl px-3.5 py-2.5 text-[13px] leading-6', m.role === 'ai' ? 'bg-slate-50 text-slate-700' : 'bg-brand-600 text-white')}>
                     {m.content}

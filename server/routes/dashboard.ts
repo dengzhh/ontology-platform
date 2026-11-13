@@ -124,16 +124,18 @@ dashboardRoutes.get('/overview', async (c) => {
 
 /** 对象字段聚合分析（Contour/Quiver 用） */
 /**
- * 通用分组聚合（P9 增强）：支持
+ * 通用分组聚合（ChatBI v2）：支持
  *  - groupBy + metric(sum/avg/count)
- *  - bucket=day|week|month|quarter：当 groupBy 是日期字段时按时间分桶（消费趋势）
+ *  - bucket=day|week|month|quarter：当 groupBy 是日期字段时按时间分桶（消费趋势），默认按时间升序返回
  *  - from/to：时间范围筛选（YYYY-MM-DD，按 groupBy 的日期字段或对象 updatedAt）
- *  - sort=count|sum|avg + order=desc|asc：默认按 sum 降序（金额最大优先，而非笔数）
+ *  - sort=count|sum|avg|name + order=desc|asc：非时间序列默认按 sum 降序（金额最大优先）
+ *  - top=N：排序后只取前 N 组（TOP-N，1-50）
+ *  - compare=prev|yoy：环比（紧邻等长上期）/同比（去年同期）窗口对比，返回两窗口总量与增减幅
  */
 dashboardRoutes.get('/aggregate', (c) => {
   const user = c.get('user')
   const space = c.get('space')
-  const { typeId, groupBy, metric, bucket, from, to, sort, order } = c.req.query()
+  const { typeId, groupBy, metric, bucket, from, to, sort, order, top, compare } = c.req.query()
   if (!typeId || !groupBy) return c.json({ error: '请指定 typeId 与 groupBy' }, 400)
 
   const t = db.select().from(tables.objectTypes).all().find((x) => x.id === typeId && x.spaceId === space.id)
@@ -174,48 +176,97 @@ dashboardRoutes.get('/aggregate', (c) => {
     return `${y}-${String(mo).padStart(2, '0')}` // month（默认）
   }
 
-  // 空间/类型过滤下推到 SQL（命中 idx_objects_space_type），避免全表读进内存
-  let objs = db.select().from(tables.objects)
-    .where(and(eq(tables.objects.spaceId, space.id), eq(tables.objects.typeId, typeId)))
-    .all()
-  // 时间范围筛选
-  if ((from || to) && dateKey) {
-    objs = objs.filter((o) => {
-      const iso = normalizeDate((o.values as Record<string, unknown>)[dateKey])
-      if (!iso) return false
-      if (from && iso < from) return false
-      if (to && iso > to) return false
-      return true
-    })
+  /** 空间/类型过滤下推 SQL + 可选时间窗过滤 + 分组聚合（主窗口与同比/环比窗口共用） */
+  const groupKey = groupProp.key // 已过存在性校验，提取常量供闭包使用
+  function aggregateRange(f?: string, t2?: string): { total: number; groups: { name: string; count: number; sum: number; avg: number }[] } {
+    let objs = db.select().from(tables.objects)
+      .where(and(eq(tables.objects.spaceId, space.id), eq(tables.objects.typeId, typeId)))
+      .all()
+    if ((f || t2) && dateKey) {
+      objs = objs.filter((o) => {
+        const iso = normalizeDate((o.values as Record<string, unknown>)[dateKey])
+        if (!iso) return false
+        if (f && iso < f) return false
+        if (t2 && iso > t2) return false
+        return true
+      })
+    }
+    const groups = new Map<string, { count: number; sum: number; avg: number }>()
+    for (const o of objs) {
+      const raw = (o.values as Record<string, unknown>)[groupKey]
+      const gv = isDateGroup && bucket ? bucketOf(normalizeDate(raw)) : String(raw ?? '未设置')
+      if (!groups.has(gv)) groups.set(gv, { count: 0, sum: 0, avg: 0 })
+      const g = groups.get(gv)!
+      g.count++
+      if (metricProp) {
+        const mv = Number((o.values as Record<string, unknown>)[metricProp.key])
+        if (!Number.isNaN(mv)) g.sum += mv
+      }
+    }
+    for (const [, g] of groups) g.avg = g.count > 0 ? Math.round((g.sum / g.count) * 10) / 10 : 0
+    return { total: objs.length, groups: Array.from(groups.entries()).map(([name, v]) => ({ name, ...v })) }
   }
 
-  // 按分组字段聚合
-  const groups = new Map<string, { count: number; sum: number; avg: number }>()
-  for (const o of objs) {
-    const raw = (o.values as Record<string, unknown>)[groupProp.key]
-    const gv = isDateGroup && bucket ? bucketOf(normalizeDate(raw)) : String(raw ?? '未设置')
-    if (!groups.has(gv)) groups.set(gv, { count: 0, sum: 0, avg: 0 })
-    const g = groups.get(gv)!
-    g.count++
-    if (metricProp) {
-      const mv = Number((o.values as Record<string, unknown>)[metricProp.key])
-      if (!Number.isNaN(mv)) g.sum += mv
+  // 排序：时间序列（日期分组+分桶）默认按时间升序（趋势图友好），其余默认按 sum 降序（金额最大优先）
+  const isTimeSeries = isDateGroup && !!bucket
+  const sortKey = sort === 'count' ? 'count' : sort === 'avg' ? 'avg' : sort === 'name' ? 'name' : (!sort && isTimeSeries ? 'name' : 'sum')
+  const direction = order === 'asc' ? 1 : order === 'desc' ? -1 : (!order && sortKey === 'name' ? 1 : -1)
+
+  const { total, groups } = aggregateRange(from, to)
+  const sorted = groups.sort((a, b) => (sortKey === 'name' ? a.name.localeCompare(b.name) * direction : (a[sortKey] - b[sortKey]) * direction))
+
+  // TOP-N：排序后截取前 N 组（1-50，非法值忽略）
+  const topN = top ? Math.min(50, Math.max(1, parseInt(top, 10) || 0)) : 0
+  const finalGroups = topN > 0 ? sorted.slice(0, topN) : sorted
+
+  // 同比/环比：以 from/to 为当期窗口，向前推导对比窗口（prev=紧邻等长上期；yoy=去年同期）
+  let compareBlock: {
+    mode: 'prev' | 'yoy'
+    current: { from: string; to: string; objects: number; sum: number; avg: number; count: number }
+    previous: { from: string; to: string; objects: number; sum: number; avg: number; count: number }
+    delta: number; deltaPct: number | null
+  } | null = null
+  if (compare === 'prev' || compare === 'yoy') {
+    if (!from || !to) return c.json({ error: 'compare（同比/环比）需要同时指定 from 与 to 作为当期窗口，例如 from=2026-09-01&to=2026-09-30&compare=prev' }, 400)
+    const msDay = 86_400_000
+    const f0 = new Date(from + 'T00:00:00Z').getTime()
+    const t0 = new Date(to + 'T00:00:00Z').getTime()
+    const len = Math.max(1, Math.round((t0 - f0) / msDay) + 1)
+    let pf: number, pt: number
+    if (compare === 'prev') {
+      pf = f0 - len * msDay
+      pt = f0 - msDay
+    } else {
+      const fy = new Date(from + 'T00:00:00Z'); fy.setUTCFullYear(fy.getUTCFullYear() - 1)
+      const ty = new Date(to + 'T00:00:00Z'); ty.setUTCFullYear(ty.getUTCFullYear() - 1)
+      pf = fy.getTime(); pt = ty.getTime()
+    }
+    const pfIso = new Date(pf).toISOString().slice(0, 10)
+    const ptIso = new Date(pt).toISOString().slice(0, 10)
+    const prev = aggregateRange(pfIso, ptIso)
+    const curSum = groups.reduce((s, g) => s + g.sum, 0)
+    const curCount = groups.reduce((s, g) => s + g.count, 0)
+    const prevSum = prev.groups.reduce((s, g) => s + g.sum, 0)
+    const prevCount = prev.groups.reduce((s, g) => s + g.count, 0)
+    const base = metricProp ? prevSum : prevCount
+    const curVal = metricProp ? curSum : curCount
+    compareBlock = {
+      mode: compare,
+      current: { from, to, objects: total, sum: Math.round(curSum * 100) / 100, avg: curCount ? Math.round((curSum / curCount) * 10) / 10 : 0, count: curCount },
+      previous: { from: pfIso, to: ptIso, objects: prev.total, sum: Math.round(prevSum * 100) / 100, avg: prevCount ? Math.round((prevSum / prevCount) * 10) / 10 : 0, count: prevCount },
+      delta: Math.round((curVal - base) * 100) / 100,
+      deltaPct: base > 0 ? Math.round(((curVal - base) / base) * 1000) / 10 : null,
     }
   }
-  for (const [, g] of groups) g.avg = g.count > 0 ? Math.round((g.sum / g.count) * 10) / 10 : 0
-
-  const sortKey = sort === 'count' ? 'count' : sort === 'avg' ? 'avg' : 'sum'
-  const direction = order === 'asc' ? 1 : -1
-  const sorted = Array.from(groups.entries()).map(([name, v]) => ({ name, ...v }))
-    .sort((a, b) => (a[sortKey] - b[sortKey]) * direction)
 
   return c.json({
     type: { id: t.id, name: t.name, color: t.color },
     groupBy: { key: groupProp.key, name: groupProp.name },
     metric: metricProp ? { key: metricProp.key, name: metricProp.name } : null,
-    total: objs.length,
-    applied: { bucket: bucket || null, from: from || null, to: to || null, sort: sortKey, order: order === 'asc' ? 'asc' : 'desc' },
-    groups: sorted,
+    total,
+    applied: { bucket: bucket || null, from: from || null, to: to || null, sort: sortKey, order: direction === 1 ? 'asc' : 'desc', top: topN || null },
+    compare: compareBlock,
+    groups: finalGroups,
   })
 })
 

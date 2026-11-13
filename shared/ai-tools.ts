@@ -63,14 +63,16 @@ export const AI_TOOLS: AiToolDef[] = [
   },
   {
     name: 'analyze_objects',
-    description: 'ChatBI：对业务对象做分组聚合分析（按类别/时间/商户等维度统计求和、均值、笔数，可时间分桶与范围筛选），返回各组数值并渲染图表。当用户问「各/按…统计、多少、占比、趋势、最多/最大、平均、分布」等分析类问题时调用，不要只列原始对象',
+    description: 'ChatBI：对业务对象做分组聚合分析（按类别/时间/商户等维度统计求和、均值、笔数，可时间分桶与范围筛选、TOP-N、同比/环比对比），返回各组数值并渲染图表（时间趋势→折线图、枚举占比→饼图、其余→条形图）。当用户问「各/按…统计、多少、占比、趋势、最多/最大、平均、分布、TOP几、环比、同比」等分析类问题时调用，不要只列原始对象',
     parameters: [
-      { name: 'typeId', type: 'string', desc: '对象类型 id 或中文名，如 expense / 支出 / device / 生产设备', required: true },
-      { name: 'groupBy', type: 'string', desc: '分组维度（属性 key 或名称），如 category / 类别 / date / 日期 / merchant / 商户', required: true },
-      { name: 'metric', type: 'string', desc: '数值指标属性 key，如 amount / 金额；留空则按笔数统计', required: false },
-      { name: 'bucket', type: 'string', desc: '按日期分组时的时间分桶：day / week / month / quarter', required: false },
+      { name: 'typeId', type: 'string', desc: '对象类型 id 或中文名，如 expense / 支出 / device / 生产设备 / order / 销售订单', required: true },
+      { name: 'groupBy', type: 'string', desc: '分组维度（属性 key 或名称），如 category / 类别 / date / 日期 / merchant / 商户 / name / 设备名称', required: true },
+      { name: 'metric', type: 'string', desc: '数值指标属性 key，如 amount / 金额 / downtime / 累计停机(h)；留空则按笔数统计', required: false },
+      { name: 'bucket', type: 'string', desc: '按日期分组时的时间分桶：day / week / month / quarter（问趋势/按月时用 month）', required: false },
       { name: 'from', type: 'string', desc: '起始日期 YYYY-MM-DD（可选）', required: false },
       { name: 'to', type: 'string', desc: '结束日期 YYYY-MM-DD（可选）', required: false },
+      { name: 'top', type: 'number', desc: '只取数值最大的前 N 组（TOP-N），如「TOP5 设备 / 前 3 大客户」→ 5 / 3', required: false },
+      { name: 'compare', type: 'string', desc: '同比/环比对比：环比上一期填 prev，同比去年同期填 yoy；必须同时给 from/to（当期窗口），返回两窗口总量与增减幅', required: false },
     ],
   },
   {

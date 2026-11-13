@@ -105,7 +105,8 @@
 
 ### /api/dashboard  (dashboardRoutes)
   GET /overview
-  GET /aggregate
+  GET /aggregate  ?typeId&groupBy&metric?&bucket=day|week|month|quarter?&from?&to?&sort=sum|count|avg|name?&order?&top=N?&compare=prev|yoy?
+    # 时间序列（日期分组+bucket）默认按时间升序；compare 需带 from/to（当期窗口），返回 compare{current,previous,delta,deltaPct}
   GET /timeline
 
 ### /api/data-layer  (dataLayerRoutes)

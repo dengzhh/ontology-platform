@@ -399,6 +399,66 @@ cleanData()
   if (prod) ok('Apollo·回滚', await api('POST', `/api/apollo/rollback/${prod.id}`))
 }
 
+/* ---------------- 17. ChatBI v2 验证数据集：24 个月订单时序（季节波动 + 年增 18%） ---------------- */
+{
+  // 生成最近 24 个完整月（上个月往回推），每月 10-14 笔订单
+  const SEASON = [0.85, 0.8, 0.95, 1.0, 1.05, 1.0, 0.9, 0.95, 1.1, 1.15, 1.3, 1.45] // 1-12 月季节因子（Q4 旺）
+  const nowD = new Date()
+  const pad = (n) => String(n).padStart(2, '0')
+  const iso = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+  const months = []
+  for (let i = 24; i >= 1; i--) months.push(new Date(nowD.getFullYear(), nowD.getMonth() - i, 1)) // 24 个月前 → 上个月
+  const insOrder = db.prepare('INSERT OR IGNORE INTO objects (id, type_id, "values", created_by, created_at, updated_at, space_id) VALUES (?, ?, ?, ?, ?, ?, ?)')
+  let inserted = 0
+  const fill = db.transaction(() => {
+    months.forEach((m, mi) => {
+      const y = m.getFullYear(), mo = m.getMonth()
+      const growth = Math.pow(1.18, mi / 12) // 年增 18%：最近月 vs 24 个月前 ≈ ×1.39，同比恒 +18%
+      const total = Math.round(520000 * SEASON[mo] * growth * (0.97 + ((y * 12 + mo) % 7) / 100))
+      const cnt = 10 + ((y * 12 + mo) % 5)
+      let used = 0
+      for (let s = 1; s <= cnt; s++) {
+        const isLast = s === cnt
+        const amt = isLast ? total - used : Math.round((total / cnt) * (0.72 + ((y * 12 + mo + s) % 7) * 0.09))
+        if (!isLast) used += amt
+        const day = 1 + (s * 7) % 25
+        const date = `${y}-${pad(mo + 1)}-${pad(day)}`
+        const dueMs = m.getTime() + (day - 1 + 30) * 86400_000
+        const status = mi >= 22 ? (s % 3 === 0 ? '生产中' : '已发货') : '已完成'
+        const id = `order:DEMO_SO_${y}${pad(mo + 1)}_${pad(s)}`
+        inserted += insOrder.run(id, 'order', JSON.stringify({ no: `DEMO_SO_${y}${pad(mo + 1)}_${pad(s)}`, amount: amt, date, due: iso(new Date(dueMs)), status }), 'DEMO_ChatBI', m.getTime() + s * 3600_000, m.getTime() + s * 3600_000, ORG).changes
+      }
+    })
+  })
+  fill()
+  summary.push({ label: 'ChatBI·24个月订单灌入(事务)', ok: inserted >= 24 * 10, detail: `${inserted} 条` })
+
+  // ① 按月趋势：时间序列默认升序（趋势折线图数据）
+  const trend = await api('GET', '/api/dashboard/aggregate?typeId=order&groupBy=date&metric=amount&bucket=month')
+  const tg = trend.data?.groups ?? []
+  const ascOk = tg.length >= 20 && tg.every((g, i) => i === 0 || g.name > tg[i - 1].name)
+  summary.push({ label: 'ChatBI·按月趋势(时间升序)', ok: trend.ok && ascOk, detail: `groups=${tg.length}` })
+
+  // ② 同比：上月 vs 去年同月（数据内置 +18% 增长，应显著为正）
+  const mStart = new Date(nowD.getFullYear(), nowD.getMonth() - 1, 1)
+  const mEnd = new Date(nowD.getFullYear(), nowD.getMonth(), 0)
+  const win = `from=${iso(mStart)}&to=${iso(mEnd)}`
+  const yoy = await api('GET', `/api/dashboard/aggregate?typeId=order&groupBy=date&metric=amount&bucket=month&${win}&compare=yoy`)
+  const yc = yoy.data?.compare
+  summary.push({ label: 'ChatBI·同比对比(+18%增长)', ok: yoy.ok && yc?.mode === 'yoy' && typeof yc.deltaPct === 'number' && yc.deltaPct > 5, detail: `本期${yc?.current?.sum} vs 去年同期${yc?.previous?.sum} = ${yc?.deltaPct}%` })
+
+  // ③ 环比：上月 vs 上上月（紧邻等长窗口）
+  const prev = await api('GET', `/api/dashboard/aggregate?typeId=order&groupBy=date&metric=amount&bucket=month&${win}&compare=prev`)
+  const pc = prev.data?.compare
+  summary.push({ label: 'ChatBI·环比对比(紧邻上期)', ok: prev.ok && pc?.mode === 'prev' && typeof pc.deltaPct === 'number', detail: `本期${pc?.current?.sum} vs 上一期${pc?.previous?.sum} = ${pc?.deltaPct}%` })
+
+  // ④ TOP-N：按订单状态取金额前 3
+  const top = await api('GET', '/api/dashboard/aggregate?typeId=order&groupBy=status&metric=amount&top=3')
+  const tpg = top.data?.groups ?? []
+  const topOk = top.ok && tpg.length >= 1 && tpg.length <= 3 && Number(top.data?.applied?.top) === 3 && tpg.every((g, i) => i === 0 || tpg[i - 1].sum >= g.sum)
+  summary.push({ label: 'ChatBI·TOP-N 截取(按金额降序)', ok: topOk, detail: `top=${tpg.length} 组` })
+}
+
 /* ---------------- 汇总 ---------------- */
 console.log('\n=== 装载结果 ===')
 for (const s of summary) console.log(`  ${s.ok ? '✓' : '✗'} ${s.label}${s.detail ? ' — ' + s.detail : ''}`)
