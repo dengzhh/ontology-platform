@@ -303,12 +303,38 @@ async function main() {
     }
   }
 
-  // 2.11 AIP Logic 工作流持久化
+  // 2.11 AIP Logic 工作流持久化 + 节点编辑契约（坐标/分支连线/校验）
   {
-    const w = await req('POST', '/api/logic/workflows', { name: `${PREFIX}_WF`, steps: [{ id: 's1', type: 'input', label: '输入' }] }, 200)
+    const steps = [
+      { id: 's1', type: 'input', label: '输入数据', outputFormat: '文本', x: 40, y: 60 },
+      { id: 's2', type: 'condition', label: '健康度判断', condition: '健康度 > 60', x: 280, y: 60, nextYes: 's3', nextNo: 's4' },
+      { id: 's3', type: 'output', label: '自动归档', x: 540, y: 20 },
+      { id: 's4', type: 'output', label: '人工复核', x: 540, y: 150 },
+    ]
+    const w = await req('POST', '/api/logic/workflows', { name: `${PREFIX}_WF`, steps }, 200)
     const wid = w.data?.id
-    log(w.ok && !!wid, 'POST /logic/workflows 保存工作流', w.ok ? `id=${wid}` : `status=${w.status}`)
-    if (wid) created.push({ label: `工作流 ${wid}`, cleanup: () => req('DELETE', `/api/logic/workflows/${wid}`) })
+    log(w.ok && !!wid, 'POST /logic/workflows 保存工作流（含坐标+分支目标）', w.ok ? `id=${wid}` : `status=${w.status}`)
+    if (wid) {
+      created.push({ label: `工作流 ${wid}`, cleanup: () => req('DELETE', `/api/logic/workflows/${wid}`) })
+      const got = await req('GET', '/api/logic/workflows')
+      const saved = (got.data?.workflows ?? []).find((x) => x.id === wid)
+      log(!!saved && saved.steps?.length === 4 && saved.steps.find((s) => s.id === 's2')?.x === 280 && saved.steps.find((s) => s.id === 's2')?.nextYes === 's3', '节点坐标/分支目标持久化后回读一致', '')
+      // 更新节点（模拟页面编辑）：改名称 + 坐标，PUT 同名幂等
+      const edited = steps.map((s) => s.id === 's3' ? { ...s, label: '自动归档（已改名）', x: 600 } : s)
+      const up = await req('POST', '/api/logic/workflows', { id: wid, name: `${PREFIX}_WF`, steps: edited }, 200)
+      const got2 = await req('GET', '/api/logic/workflows')
+      const saved2 = (got2.data?.workflows ?? []).find((x) => x.id === wid)
+      log(up.ok && saved2?.steps?.find((s) => s.id === 's3')?.label === '自动归档（已改名）' && saved2?.steps?.find((s) => s.id === 's3')?.x === 600, '节点编辑（改名+拖拽坐标）保存后生效', '')
+      // 分支执行：健康度 62 > 60 → 走自动归档，不经过人工复核
+      const run = await req('POST', `/api/logic/workflows/${wid}/run`, { input: '设备 M-1 健康度 62' }, 200, 25000)
+      const runSteps = (run.data?.results ?? []).map((r) => r.step)
+      log(run.ok && runSteps.includes('自动归档（已改名）') && !runSteps.includes('人工复核'), '工作流按 nextYes/nextNo 分支执行（真实跳转）', runSteps.join('→'))
+    }
+    // 保存校验
+    const empty = await req('POST', '/api/logic/workflows', { name: `${PREFIX}_WF_BAD`, steps: [] }, 400)
+    log(empty.ok, 'POST /logic/workflows 空节点返回 400', '')
+    const badTarget = await req('POST', '/api/logic/workflows', { name: `${PREFIX}_WF_BAD`, steps: [{ id: 's1', type: 'condition', label: '条件', nextYes: 'NO_SUCH' }] }, 400)
+    log(badTarget.ok, 'POST /logic/workflows 分支目标不存在返回 400', '')
   }
 
   // 2.12 识别模板（含字段映射，验证不清空）

@@ -87,6 +87,20 @@ function cleanData() {
     try { run('DELETE FROM object_types WHERE id=?', tid) } catch { /* ignore */ }
   }
   run(`DELETE FROM audit_events WHERE target LIKE ? AND created_at > ?`, `${TAG}%`, Date.now() - 30 * 86400_000)
+  // AIP Logic 历史同名工作流去重（旧版每次装载都新建，界面下拉曾堆积 20+ 同名项）
+  try {
+    for (const row of raw(`SELECT key, value FROM settings WHERE key LIKE 'logic_workflows_%'`)) {
+      const data = (() => { try { return JSON.parse(String(row.value)) } catch { return {} } })()
+      const list = Array.isArray(data.workflows) ? data.workflows : []
+      const seen = new Map()
+      for (const w of list) { if (w && w.name) seen.set(w.name, w) } // 同名保留最后一条
+      const merged = Array.from(seen.values())
+      if (merged.length !== list.length) {
+        run('UPDATE settings SET value=? WHERE key=?', JSON.stringify({ workflows: merged }), row.key)
+        console.log(`  AIP Logic 工作流去重: ${list.length} → ${merged.length}`)
+      }
+    }
+  } catch { /* 表不存在则跳过 */ }
   console.log(`清理完成：DEMO_ 对象 ${before} 条及其它实体`)
   return before
 }
@@ -254,8 +268,45 @@ cleanData()
 
 /* ---------------- 7. AIP：Logic 工作流 / Agent / 会话 ---------------- */
 {
-  const wf = await api('POST', '/api/logic/workflows', { name: `${TAG}演示工作流`, steps: [{ id: 's1', type: 'input', label: '输入' }, { id: 's2', type: 'condition', label: '条件', condition: '置信度 > 0.8' }, { id: 's3', type: 'output', label: '输出' }] })
-  ok('AIP Logic·工作流持久化', wf, wf.data?.id || '')
+  // 工作流 1：线性四节点（旧版兼容形态），带坐标
+  const linearSteps = [
+    { id: 's1', type: 'input', label: '输入数据', outputFormat: '对象集/文本', x: 40, y: 60 },
+    { id: 's2', type: 'llm', label: 'LLM 分析', prompt: '分析设备数据并给出置信度', model: 'auto', x: 270, y: 60 },
+    { id: 's3', type: 'condition', label: '置信度判断', condition: '置信度 > 0.8', x: 500, y: 60 },
+    { id: 's4', type: 'output', label: '输出结果', outputFormat: '结构化 JSON', x: 730, y: 60 },
+  ]
+  const wf1 = await api('POST', '/api/logic/workflows', { name: `${TAG}线性分析工作流`, steps: linearSteps })
+  ok('AIP Logic·线性工作流持久化', wf1, wf1.data?.id || '')
+
+  // 工作流 2：条件分支双出口（nextYes / nextNo 指向不同节点，画布自动画两条着色连线）
+  const branchSteps = [
+    { id: 's1', type: 'input', label: '输入数据', outputFormat: '设备告警文本', x: 40, y: 60 },
+    { id: 's2', type: 'condition', label: '健康度判断', condition: '健康度 > 60', x: 280, y: 60, nextYes: 's3', nextNo: 's4' },
+    { id: 's3', type: 'output', label: '自动归档', outputFormat: '正常设备清单', x: 540, y: 20 },
+    { id: 's4', type: 'output', label: '人工复核', outputFormat: '待复核工单', x: 540, y: 150 },
+  ]
+  const wf2 = await api('POST', '/api/logic/workflows', { name: `${TAG}分支复核工作流`, steps: branchSteps })
+  ok('AIP Logic·分支工作流持久化(含 nextYes/nextNo)', wf2, wf2.data?.id || '')
+
+  // 幂等校验：重复 POST 同名工作流不新增（后端按同名合并）
+  const before = (await api('GET', '/api/logic/workflows')).data?.workflows ?? []
+  await api('POST', '/api/logic/workflows', { name: `${TAG}分支复核工作流`, steps: branchSteps })
+  const after = (await api('GET', '/api/logic/workflows')).data?.workflows ?? []
+  const nameCount = after.filter((w) => w.name === `${TAG}分支复核工作流`).length
+  const idempotent = wf2.ok && before.length === after.length && nameCount === 1
+  ok('AIP Logic·同名装载幂等(不叠加)', { ok: idempotent, status: idempotent ? 200 : 500, data: {} }, `before=${before.length} after=${after.length} 同名=${nameCount}`)
+
+  // 保存校验：空节点 / 分支目标不存在 → 400
+  ok('AIP Logic·空节点保存被拒(400)', await api('POST', '/api/logic/workflows', { name: `${TAG}非法工作流`, steps: [] }, ORG, 400))
+  ok('AIP Logic·分支目标不存在被拒(400)', await api('POST', '/api/logic/workflows', { name: `${TAG}非法工作流`, steps: [{ id: 's1', type: 'condition', label: '条件', condition: 'x > 1', nextYes: 'NO_SUCH_NODE' }] }, ORG, 400))
+
+  // 分支执行：健康度 62 > 60 → 走「自动归档」（结果里出现该节点，不出现人工复核）
+  if (wf2.data?.id) {
+    const run = await api('POST', `/api/logic/workflows/${wf2.data.id}/run`, { input: '设备 F2-IM-2041 健康度 62' })
+    const stepsRun = (run.data?.results ?? []).map((r) => r.step)
+    const branchOk = run.ok && stepsRun.includes('自动归档') && !stepsRun.includes('人工复核')
+    ok('AIP Logic·分支执行(健康度62→自动归档)', { ok: branchOk, status: branchOk ? 200 : run.status, data: run.data }, stepsRun.join('→'))
+  }
   const ag = await api('POST', '/api/aip/agents', { name: `${TAG}演示助手`, desc: '全功能验证 Agent', tools: ['ontology_overview', 'query_objects'], guardrail: { maskSensitive: true, requireApprovalForActions: true } })
   ok('Agent Studio·新建 Agent', ag, ag.data?.id || '')
   ok('AIP·助手会话', await api('POST', '/api/ai/conversations', { title: `${TAG}演示会话` }))

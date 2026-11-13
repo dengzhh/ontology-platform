@@ -9,7 +9,7 @@
 [![React](https://img.shields.io/badge/React_18-TypeScript-61dafb.svg)]()
 [![Hono](https://img.shields.io/badge/Hono-API_server-e36002.svg)]()
 [![SQLite](https://img.shields.io/badge/SQLite-Drizzle_ORM-003b57.svg)]()
-[![Tests](https://img.shields.io/badge/smoke-161/161_passing-2ea44f.svg)]()
+[![Tests](https://img.shields.io/badge/smoke-166/166_passing-2ea44f.svg)]()
 
 **42 个应用 · 全栈真实落库 · 一条命令启动 · 零外部依赖**
 
@@ -90,11 +90,11 @@ npm run dev              # 一条命令启动全栈：前端 http://localhost:51
 
 **默认账号**：`chen.xingye / ontos@2026`（平台管理员；另有维修工程师/计划员/审计员演示账号，登录页可一键填入）
 
-**可选：一键装载全功能验证数据**（幂等，83 项断言）
+**可选：一键装载全功能验证数据**（幂等，88 项断言）
 
 ```bash
 python demo-data/build_external_db.py   # 生成独立外部 SQLite 演示库（4 表 / 120 行）
-node demo-data/load.mjs                 # 期望：通过 83/83
+node demo-data/load.mjs                 # 期望：通过 88/88
 ```
 
 装载后按 `demo-data/FEATURE-MATRIX.md` 的 42 页验证矩阵逐页体验。清理验证数据：`node demo-data/load.mjs --clean`。
@@ -106,7 +106,7 @@ node demo-data/load.mjs                 # 期望：通过 83/83
 npm run build             # 前端类型检查 + 产物构建（dist/）
 npm run typecheck:server  # 服务端类型检查
 npm run preview           # 本地预览构建产物
-node tests/smoke.mjs      # 全站 API 黑盒冒烟（161 项断言，零依赖）
+node tests/smoke.mjs      # 全站 API 黑盒冒烟（166 项断言，零依赖）
 node demo-data/stress.mjs # 10 万行压力基准（灌入 726ms / 列表 0.3ms，自动清理）
 ```
 
@@ -131,7 +131,7 @@ node demo-data/stress.mjs # 10 万行压力基准（灌入 726ms / 列表 0.3ms�
 | **知识** | 知识库（入库/分块/向量化）、知识检索（BM25+向量 RRF）、知识抽取（LLM 候选 → 审核 → 落地为本体类型） |
 | **分析** | Contour、Quiver、Insight 路径、地理空间、Notepad 报告、Fusion 表格（单元格写回本体 + 审计） |
 | **应用** | Workshop 低代码搭建、Automate 自动化、Carbon 工作区、Marketplace |
-| **AIP** | AIP Logic、Agent Studio、AIP Threads、AIP Evals、模型管理、开发者工具（API 密钥真实鉴权） |
+| **AIP** | AIP Logic（可视化节点编排：点选编辑/拖拽布局/顺序调整/分支连线/删除确认 + 真实分支执行引擎）、Agent Studio、AIP Threads、AIP Evals、模型管理、开发者工具（API 密钥真实鉴权） |
 | **治理** | 审批中心、审计日志、安全与标记（脱敏规则/敏感扫描/生命周期） |
 | **管理** | 用户与权限、实现进度、控制面板（SMTP/AI/嵌入/视觉配置 + 真实用量）、识别模板、Apollo 部署（本地编排状态机） |
 
@@ -190,8 +190,8 @@ tests/ · demo-data/            # 冒烟/契约/清单/E2E 剧本/扫描素材 �
 
 | 资产 | 规模 | 说明 |
 |---|---|---|
-| `tests/smoke.mjs` | **161 项断言全绿** | 零依赖黑盒：登录 → 60+ 读端点 → 写闭环 → 权限 → 外部源 → ChatBI → 函数沙箱 → 分页/批量 |
-| `demo-data/load.mjs` | **83 项幂等装载** | 一键生成验证全部功能的数据集（含外部库构建） |
+| `tests/smoke.mjs` | **166 项断言全绿** | 零依赖黑盒：登录 → 60+ 读端点 → 写闭环 → 权限 → 外部源 → ChatBI → 函数沙箱 → 分页/批量 |
+| `demo-data/load.mjs` | **88 项幂等装载** | 一键生成验证全部功能的数据集（含外部库构建） |
 | `demo-data/stress.mjs` | **10 万行基准** | 事务灌入 726ms、索引列表 0.3ms、count 5.4ms，自动清理 |
 | `demo-data/FEATURE-MATRIX.md` | 42 页矩阵 | 每页功能 ↔ 验证数据 ↔ 体验步骤 |
 | `tests/checklist.md` / `e2e-scenarios.md` | 40 页清单 / 10 剧本 | 人工验收与业务闭环走查 |

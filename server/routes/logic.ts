@@ -16,6 +16,12 @@ interface WorkflowStep {
   model?: string
   condition?: string
   outputFormat?: string
+  /** 画布坐标（前端拖拽后随工作流持久化） */
+  x?: number
+  y?: number
+  /** 条件节点分支目标：命中走 nextYes，否则走 nextNo；留空按数组顺序继续 */
+  nextYes?: string
+  nextNo?: string
 }
 interface Workflow { id: string; name: string; steps: WorkflowStep[]; updatedAt: number }
 
@@ -56,16 +62,30 @@ logicRoutes.post('/workflows', async (c) => {
   const user = c.get('user')
   const body = await c.req.json<{ id?: string; name: string; steps: WorkflowStep[] }>()
   if (!body.name?.trim()) return c.json({ error: '请填写名称' }, 400)
+  const steps = body.steps ?? []
+  if (!Array.isArray(steps) || steps.length === 0) return c.json({ error: '至少需要一个节点' }, 400)
+  if (new Set(steps.map((s) => s.id)).size !== steps.length) return c.json({ error: '节点 id 重复' }, 400)
+  const validTypes = new Set(['input', 'llm', 'condition', 'output'])
+  if (steps.some((s) => !validTypes.has(s.type))) return c.json({ error: '存在未知节点类型' }, 400)
+  // 分支目标必须指向存在的节点，避免运行时断链
+  for (const s of steps) {
+    for (const target of [s.nextYes, s.nextNo]) {
+      if (target && !steps.some((x) => x.id === target)) return c.json({ error: `节点「${s.label}」的分支目标 ${target} 不存在` }, 400)
+    }
+  }
   const list = readWorkflows(space.id)
   const id = body.id ?? `WF-${Date.now().toString(36).toUpperCase()}`
-  const wf: Workflow = { id, name: body.name.trim(), steps: body.steps ?? [], updatedAt: Date.now() }
-  const next = body.id ? list.map((w) => (w.id === body.id ? wf : w)) : [...list, wf]
+  // 同名幂等：load.mjs 等脚本重复装载时不叠加（同名视为更新，保留原 id）
+  const sameName = list.find((w) => w.name === body.name.trim() && w.id !== id)
+  const finalId = !body.id && sameName ? sameName.id : id
+  const wf: Workflow = { id: finalId, name: body.name.trim(), steps, updatedAt: Date.now() }
+  const next = list.some((w) => w.id === finalId) ? list.map((w) => (w.id === finalId ? wf : w)) : [...list, wf]
   writeWorkflows(space.id, next)
   db.insert(tables.auditEvents).values({
     id: `AE-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-    actor: user.name, action: body.id ? '更新工作流' : '新建工作流', target: body.name, ip: '本地', createdAt: Date.now(),
+    actor: user.name, action: body.id || sameName ? '更新工作流' : '新建工作流', target: body.name, ip: '本地', createdAt: Date.now(),
   }).run()
-  return c.json({ id })
+  return c.json({ id: finalId })
 })
 
 /** 删除工作流 */
@@ -77,10 +97,10 @@ logicRoutes.delete('/workflows/:id', (c) => {
 })
 
 /**
- * 真实执行工作流：按步骤逐步执行
+ * 真实执行工作流：按节点连线逐步执行（条件节点按 nextYes/nextNo 跳转，否则按数组顺序）
  * - llm 步骤：调用 LLM 处理上一步输出
  * - condition 步骤：解析 "字段 操作符 值" 或 "置信度 > 0.8"，按结果走不同分支
- * - 返回每步的输入/输出/分支结果
+ * - 返回每步的输入/输出/分支结果；防环上限 20 步
  */
 interface StepResult { step: string; type: string; input: string; output: string; branch?: string }
 logicRoutes.post('/workflows/:id/run', async (c) => {
@@ -93,14 +113,23 @@ logicRoutes.post('/workflows/:id/run', async (c) => {
   const results: StepResult[] = []
   let ctx = input
   let conditionResult: boolean | null = null
+  const byId = new Map(wf.steps.map((s) => [s.id, s]))
+  const visited = new Set<string>()
+  let current: WorkflowStep | undefined = wf.steps[0]
 
-  for (const step of wf.steps) {
+  for (let count = 0; current && count < 20; count++) {
+    const step: WorkflowStep = current
+    if (visited.has(step.id)) break // 防环
+    visited.add(step.id)
     const stepInput = ctx
+    let nextId: string | undefined
+    const idx = wf.steps.findIndex((s) => s.id === step.id)
+    const inOrderNext = idx >= 0 && idx + 1 < wf.steps.length ? wf.steps[idx + 1].id : undefined
+
     if (step.type === 'input') {
       results.push({ step: step.label, type: step.type, input, output: ctx })
-      continue
-    }
-    if (step.type === 'llm') {
+      nextId = inOrderNext
+    } else if (step.type === 'llm') {
       try {
         const prompt = [
           step.prompt || '处理输入并输出结构化结果。',
@@ -112,9 +141,8 @@ logicRoutes.post('/workflows/:id/run', async (c) => {
         return c.json({ error: `节点「${step.label}」执行失败：${e instanceof Error ? e.message : '未知'}`, results }, 502)
       }
       results.push({ step: step.label, type: step.type, input: stepInput.slice(0, 120), output: ctx.slice(0, 400) })
-      continue
-    }
-    if (step.type === 'condition') {
+      nextId = inOrderNext
+    } else if (step.type === 'condition') {
       // 解析条件：如 "置信度 > 0.8" / "amount >= 100"
       const m = (step.condition ?? '').match(/(.+?)\s*(>=|<=|>|<|==|=|包含|不包含)\s*(.+)/)
       if (m) {
@@ -138,11 +166,14 @@ logicRoutes.post('/workflows/:id/run', async (c) => {
         } catch { conditionResult = true }
       }
       results.push({ step: step.label, type: step.type, input: stepInput.slice(0, 120), output: conditionResult ? '是 → 走主分支' : '否 → 走人工复核分支', branch: conditionResult ? 'yes' : 'no' })
-      continue
-    }
-    if (step.type === 'output') {
+      // 按分支目标跳转；留空则按数组顺序继续
+      nextId = conditionResult ? (step.nextYes ?? inOrderNext) : (step.nextNo ?? inOrderNext)
+    } else {
+      // output 为终点：不再按数组顺序继续（否则分支两出口会串行执行）
       results.push({ step: step.label, type: step.type, input: stepInput.slice(0, 120), output: ctx.slice(0, 500) })
+      nextId = step.nextYes
     }
+    current = nextId ? byId.get(nextId) : undefined
   }
 
   db.insert(tables.auditEvents).values({
