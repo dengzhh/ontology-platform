@@ -159,10 +159,12 @@
   GET /search
 
 ### /api/logic  (logicRoutes)
-  GET /workflows
-  POST /workflows
+  GET /workflows                  # 返回 用户工作流 + 5 个内置预设（preset:true, sampleInput, tag, needsLlm）
+  POST /workflows                 # 步骤类型 input|llm|condition|transform|output；transform 支持 extract(field)/keyword(words)/format
+                                  # 校验：空节点/重复 id/非法类型/分支目标不存在 → 400；同名幂等；传预设 id 保存 → 自动另存副本（名称加「副本」，返回新 id）
   DELETE /workflows/:id
-  POST /workflows/:id/run
+  POST /workflows/:id/run         # id 可为预设 id（直接运行内置模板）；condition 按 nextYes/nextNo 真实跳转；
+                                  # transform 本地确定性执行；llm 节点网关不可用时降级为规则摘要（不返回 502，结果标 branch=degraded）
 
 ### /api/objects  (objectRoutes)
   GET /types

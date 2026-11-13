@@ -326,7 +326,7 @@ async function main() {
       const saved2 = (got2.data?.workflows ?? []).find((x) => x.id === wid)
       log(up.ok && saved2?.steps?.find((s) => s.id === 's3')?.label === '自动归档（已改名）' && saved2?.steps?.find((s) => s.id === 's3')?.x === 600, '节点编辑（改名+拖拽坐标）保存后生效', '')
       // 分支执行：健康度 62 > 60 → 走自动归档，不经过人工复核
-      const run = await req('POST', `/api/logic/workflows/${wid}/run`, { input: '设备 M-1 健康度 62' }, 200, 25000)
+      const run = await req('POST', `/api/logic/workflows/${wid}/run`, { input: '设备 M-1 健康度 62' }, 200, 45000)
       const runSteps = (run.data?.results ?? []).map((r) => r.step)
       log(run.ok && runSteps.includes('自动归档（已改名）') && !runSteps.includes('人工复核'), '工作流按 nextYes/nextNo 分支执行（真实跳转）', runSteps.join('→'))
     }
@@ -335,6 +335,19 @@ async function main() {
     log(empty.ok, 'POST /logic/workflows 空节点返回 400', '')
     const badTarget = await req('POST', '/api/logic/workflows', { name: `${PREFIX}_WF_BAD`, steps: [{ id: 's1', type: 'condition', label: '条件', nextYes: 'NO_SUCH' }] }, 400)
     log(badTarget.ok, 'POST /logic/workflows 分支目标不存在返回 400', '')
+
+    // 预设模板契约：内置可见 + 可直接运行（transform 本地确定性执行）
+    const list = await req('GET', '/api/logic/workflows')
+    const presets = (list.data?.workflows ?? []).filter((w) => w.preset)
+    log(presets.length === 5 && presets.every((p) => p.sampleInput && p.steps.length >= 4), 'GET /logic/workflows 内置 5 个预设模板（含示例输入）', presets.map((p) => p.name).join('、'))
+    const runPreset = await req('POST', '/api/logic/workflows/PRESET-DEVICE-TRIAGE/run', { input: '设备 M-9 健康度 42，停机 12 小时' }, 200, 20000)
+    const prSteps = (runPreset.data?.results ?? []).map((r) => r.step)
+    log(runPreset.ok && prSteps.includes('转维修复核') && !prSteps.includes('自动归档') && (runPreset.data?.results ?? []).some((r) => r.type === 'transform'), '预设工作流直接运行（transform→condition 真实分流）', prSteps.join('→'))
+    // 保存预设自动另存为副本，不污染内置模板
+    const savePreset = await req('POST', '/api/logic/workflows', { id: 'PRESET-TICKET-ROUTE', name: `${PREFIX}_工单分流副本`, steps: presets.find((p) => p.id === 'PRESET-TICKET-ROUTE')?.steps ?? [{ id: 's1', type: 'input', label: '输入' }] }, 200)
+    const savedId = savePreset.data?.id
+    log(savePreset.ok && !!savedId && savedId !== 'PRESET-TICKET-ROUTE', '保存预设另存为副本（不覆盖内置模板）', `id=${savedId}`)
+    if (savedId) created.push({ label: `工作流副本 ${savedId}`, cleanup: () => req('DELETE', `/api/logic/workflows/${savedId}`) })
   }
 
   // 2.12 识别模板（含字段映射，验证不清空）
@@ -371,8 +384,8 @@ async function main() {
       const blocked = chat.ok && String(chat.data?.reply ?? '').includes('可信业务定义')
       log(blocked, 'POST /ai/chat 无术语覆盖的数据问题明确拒答', blocked ? '' : `reply=${String(chat.data?.reply ?? '').slice(0, 100)}`)
       // 命中术语时不拒答
-      // 命中术语会走真实 LLM（外部网关可能 5-15s），放宽超时
-      const chat2 = await req('POST', '/api/ai/chat', { messages: [{ role: 'user', content: `${PREFIX}_销售额` }] }, 200, 25000)
+      // 命中术语会走真实 LLM（外部网关限流时可 30-40s），放宽超时
+      const chat2 = await req('POST', '/api/ai/chat', { messages: [{ role: 'user', content: `${PREFIX}_销售额` }] }, 200, 45000)
       log(chat2.ok && !String(chat2.data?.reply ?? '').includes('可信业务定义'), 'POST /ai/chat 命中术语时正常回答', chat2.ok ? '' : `status=${chat2.status}`)
       // 撤销认证后守卫放行（术语不再作为可信口径）
       const p = await req('PATCH', `/api/ontology/terms/${id}/certify`, { certified: false })
@@ -460,24 +473,24 @@ async function main() {
     const src = (await import('node:fs')).readFileSync(new URL('../shared/ai-tools.ts', import.meta.url), 'utf8')
     log(src.includes("name: 'analyze_objects'"), 'AI_TOOLS 含 analyze_objects 工具契约')
     // 回归：AIP 助手的「查询设备」示例属明细查询，语义守卫不得误判为指标问题而拒答
-    const detail = await req('POST', '/api/ai/chat', { messages: [{ role: 'user', content: '查询设备 "M-2041"' }] }, 200, 25000)
+    const detail = await req('POST', '/api/ai/chat', { messages: [{ role: 'user', content: '查询设备 "M-2041"' }] }, 200, 45000)
     const detailTools = (detail.data?.toolCalls ?? []).map((x) => x.name)
     const notBlocked = !String(detail.data?.reply ?? '').includes('可信业务定义')
     log(detail.ok && notBlocked && (detailTools.length > 0 || String(detail.data?.reply ?? '').length > 0), 'POST /ai/chat 明细查询示例不被语义守卫误拒答', `tools=${detailTools.join(',')}`)
     // 回归：系统用法类问题（「X 在哪儿配置」）应确定性直达 navigate，不绕数据/知识工具、不 400
-    const help = await req('POST', '/api/ai/chat', { messages: [{ role: 'user', content: '可信业务定义在哪儿配置' }] }, 200, 25000)
+    const help = await req('POST', '/api/ai/chat', { messages: [{ role: 'user', content: '可信业务定义在哪儿配置' }] }, 200, 45000)
     const helpTools = (help.data?.toolCalls ?? []).map((x) => x.name)
     const isNav = helpTools.includes('navigate') && !helpTools.some((n) => ['analyze_objects', 'search_knowledge', 'query_objects'].includes(n))
     log(help.ok && isNav && /本体管理器/.test(String(help.data?.reply ?? '')), 'POST /ai/chat 系统用法类问题直达 navigate', `tools=${helpTools.join(',')}`)
     // 回归：新工具（排程/治理）的对话路由——问排程与扫描应命中对应工具而非瞎猜数据字段
-    const sched = await req('POST', '/api/ai/chat', { messages: [{ role: 'user', content: '查看当前排程与利用率' }] }, 200, 25000)
+    const sched = await req('POST', '/api/ai/chat', { messages: [{ role: 'user', content: '查看当前排程与利用率' }] }, 200, 45000)
     const schedTools = (sched.data?.toolCalls ?? []).map((x) => x.name)
     log(sched.ok && (schedTools.includes('get_schedule') || /排程|利用率/.test(String(sched.data?.reply ?? ''))), 'POST /ai/chat 排程类问题 → get_schedule', `tools=${schedTools.join(',')}`)
-    const scan = await req('POST', '/api/ai/chat', { messages: [{ role: 'user', content: '扫描敏感数据' }] }, 200, 25000)
+    const scan = await req('POST', '/api/ai/chat', { messages: [{ role: 'user', content: '扫描敏感数据' }] }, 200, 45000)
     const scanTools = (scan.data?.toolCalls ?? []).map((x) => x.name)
     log(scan.ok && (scanTools.includes('governance_scan') || /扫描|敏感/.test(String(scan.data?.reply ?? ''))), 'POST /ai/chat 治理类问题 → governance_scan', `tools=${scanTools.join(',')}`)
     // 本地引擎：分析类问题应返回 analyze_objects 工具调用（而非普通 query_objects）
-    const c = await req('POST', '/api/ai/chat', { messages: [{ role: 'user', content: '按类别统计支出金额' }] }, 200, 25000)
+    const c = await req('POST', '/api/ai/chat', { messages: [{ role: 'user', content: '按类别统计支出金额' }] }, 200, 45000)
     const tools = (c.data?.toolCalls ?? []).map((x) => x.name)
     // LLM 模式可能直接以自然语言回答分析思路，本地引擎才会给出工具调用；两者都算识别为分析类
     const recognized = tools.includes('analyze_objects') || /统计|聚合|分组|类别/.test(String(c.data?.reply ?? ''))

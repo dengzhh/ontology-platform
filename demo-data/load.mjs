@@ -307,6 +307,24 @@ cleanData()
     const branchOk = run.ok && stepsRun.includes('自动归档') && !stepsRun.includes('人工复核')
     ok('AIP Logic·分支执行(健康度62→自动归档)', { ok: branchOk, status: branchOk ? 200 : run.status, data: run.data }, stepsRun.join('→'))
   }
+  // 预设模板：产品内置、列表可见、离线确定性模板直接跑出结果
+  const allWf = (await api('GET', '/api/logic/workflows')).data?.workflows ?? []
+  const presets = allWf.filter((w) => w.preset)
+  ok('AIP Logic·预设模板库可见(5 个)', { ok: presets.length === 5, status: presets.length === 5 ? 200 : 500, data: {} }, `presets=${presets.length}`)
+
+  // 逐个运行 3 个离线模板（不依赖 AI 网关，确定性结果）
+  const presetCases = [
+    { id: 'PRESET-DEVICE-TRIAGE', input: '设备 F2-IM-2041 健康度 42，已停机 47.5 小时', expect: '转维修复核', notExpect: '自动归档' },
+    { id: 'PRESET-TICKET-ROUTE', input: '紧急：注塑机主轴故障停机，需立即处理', expect: '优先处理', notExpect: '常规排队' },
+    { id: 'PRESET-ORDER-TIER', input: '订单 SO-2026-1188 金额 820000 元', expect: '大客户跟进', notExpect: '常规履约' },
+  ]
+  for (const pc of presetCases) {
+    const run = await api('POST', `/api/logic/workflows/${pc.id}/run`, { input: pc.input }, ORG, 200, 20000)
+    const stepsRun = (run.data?.results ?? []).map((r) => r.step)
+    const okRun = run.ok && stepsRun.includes(pc.expect) && !stepsRun.includes(pc.notExpect)
+    ok(`AIP Logic·预设直接运行「${pc.id}」`, { ok: okRun, status: okRun ? 200 : run.status, data: run.data }, stepsRun.join('→'))
+  }
+
   const ag = await api('POST', '/api/aip/agents', { name: `${TAG}演示助手`, desc: '全功能验证 Agent', tools: ['ontology_overview', 'query_objects'], guardrail: { maskSensitive: true, requireApprovalForActions: true } })
   ok('Agent Studio·新建 Agent', ag, ag.data?.id || '')
   ok('AIP·助手会话', await api('POST', '/api/ai/conversations', { title: `${TAG}演示会话` }))

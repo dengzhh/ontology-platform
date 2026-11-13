@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { Sparkles, Plus, Trash2, X, Loader2, Play, Save, Search, GitBranch, ArrowRight, ArrowUp, ArrowDown, Copy, Link2 } from 'lucide-react'
+import { Sparkles, Plus, Trash2, X, Loader2, Play, Save, Search, GitBranch, ArrowRight, ArrowUp, ArrowDown, Copy, Link2, Wand2, Zap } from 'lucide-react'
 import PageShell from '@/components/ui/PageShell'
 import Btn from '@/components/ui/Btn'
 import { Badge } from '@/components/ui/Badge'
@@ -9,28 +9,15 @@ import FlowCanvas, { type FlowNode, type FlowEdge } from '@/components/canvas/Fl
 import { api } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
 import { cn } from '@/lib/utils'
+import { WORKFLOW_PRESETS, type WorkflowStep, type WorkflowPreset } from '../../../shared/workflowTemplates'
 
-interface WorkflowStep {
-  id: string
-  type: 'input' | 'llm' | 'condition' | 'output'
-  label: string
-  prompt?: string
-  model?: string
-  condition?: string
-  outputFormat?: string
-  /** 画布坐标（可拖拽调整，保存后持久化） */
-  x?: number
-  y?: number
-  /** 条件节点分支目标：命中走 nextYes，否则走 nextNo；留空则按数组顺序继续 */
-  nextYes?: string
-  nextNo?: string
-}
-interface Workflow { id: string; name: string; steps: WorkflowStep[]; updatedAt: number }
+interface Workflow { id: string; name: string; steps: WorkflowStep[]; updatedAt: number; desc?: string; tag?: string; sampleInput?: string; needsLlm?: boolean; preset?: boolean }
 
 const TYPE_META: Record<WorkflowStep['type'], { icon: typeof Sparkles; accent: string; label: string }> = {
   input: { icon: Search, accent: 'bg-brand-50 text-brand-600', label: '输入' },
   llm: { icon: Sparkles, accent: 'bg-violet-50 text-violet-600', label: 'LLM 节点' },
   condition: { icon: GitBranch, accent: 'bg-amber-50 text-amber-600', label: '条件分支' },
+  transform: { icon: Wand2, accent: 'bg-cyan-50 text-cyan-600', label: '转换节点' },
   output: { icon: ArrowRight, accent: 'bg-emerald-50 text-emerald-600', label: '输出' },
 }
 
@@ -85,11 +72,16 @@ export default function AipLogic() {
   const notify = (m: string) => { setToast(m); setTimeout(() => setToast(''), 3000) }
   const sel = steps.find((s) => s.id === selectedStep)
 
-  // 首次加载选中第一个工作流
+  // 首次加载：有用户工作流则选第一个，否则默认载入「设备健康分诊」预设（开箱即用）
   useEffect(() => {
     if (!wfId && workflows.length) {
-      const w = workflows[0]
-      setWfId(w.id); setWfName(w.name); setSteps(w.steps)
+      const w = workflows.find((x) => !x.preset) ?? workflows.find((x) => x.preset)
+      if (!w) return
+      if (w.preset) {
+        const p = WORKFLOW_PRESETS.find((x) => x.id === w.id)
+        if (p) { loadPreset(p); return }
+      }
+      setWfId(w.id); setWfName(w.name); setSteps(normalizeSteps(w.steps))
     }
   }, [workflows, wfId])
 
@@ -101,7 +93,23 @@ export default function AipLogic() {
   async function selectWorkflow(id: string) {
     const w = workflows.find((x) => x.id === id)
     if (!w) return
+    if (w.preset) {
+      const p = WORKFLOW_PRESETS.find((x) => x.id === id)
+      if (p) { loadPreset(p); return }
+    }
     setWfId(w.id); setWfName(w.name); setSteps(normalizeSteps(w.steps)); setSelectedStep(null); setStepResults([]); setTestResult('')
+  }
+
+  /** 一键载入预设模板：填入节点与示例输入，直接可点运行；保存时自动另存为副本 */
+  function loadPreset(p: WorkflowPreset) {
+    setWfId(p.id)
+    setWfName(p.name)
+    setSteps(normalizeSteps(p.steps))
+    setTestInput(p.sampleInput)
+    setSelectedStep(null)
+    setStepResults([])
+    setTestResult('')
+    notify(`已载入预设「${p.name}」，示例输入已填好，直接点击运行即可`)
   }
 
   function validate(): string | null {
@@ -123,6 +131,7 @@ export default function AipLogic() {
     if (err) { notify(err); return null }
     setBusy(true)
     try {
+      // 预设模板保存时后端会「另存为副本」并返回新 id，用新 id 运行
       const r = await api<{ id: string }>('/logic/workflows', { method: 'POST', body: { id: wfId ?? undefined, name: wfName, steps } })
       setWfId(r.id)
       wfQ.reload()
@@ -148,6 +157,7 @@ export default function AipLogic() {
       y: 60 + (steps.length % 2) * 110,
       ...(type === 'llm' ? { prompt: '处理输入并输出结构化结果', model: 'auto' } : {}),
       ...(type === 'condition' ? { condition: '置信度 > 0.8' } : {}),
+      ...(type === 'transform' ? { transform: 'extract' as const, field: '健康度' } : {}),
     }
     setSteps((list) => [...list, step])
     setSelectedStep(id)
@@ -218,7 +228,7 @@ export default function AipLogic() {
       x: s.x ?? 40 + (i % 3) * 240,
       y: s.y ?? 40 + Math.floor(i / 3) * 140,
       title: s.label,
-      subtitle: s.type === 'llm' ? (s.model ?? 'auto') : s.type === 'condition' ? s.condition : '',
+      subtitle: s.type === 'llm' ? (s.model ?? 'auto') : s.type === 'condition' ? s.condition : s.type === 'transform' ? (s.transform === 'keyword' ? (s.words ?? '') : s.transform === 'extract' ? `提取 ${s.field ?? ''}` : '格式化') : '',
       icon: m.icon,
       accent: m.accent,
       badge: s.type,
@@ -259,17 +269,56 @@ export default function AipLogic() {
         <>
           <select value={wfId ?? ''} onChange={(e) => e.target.value ? selectWorkflow(e.target.value) : newWorkflow()} className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-700">
             <option value="">（新建工作流）</option>
-            {workflows.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
+            <optgroup label="预设模板">
+              {workflows.filter((w) => w.preset).map((w) => <option key={w.id} value={w.id}>★ {w.name}</option>)}
+            </optgroup>
+            <optgroup label="我的工作流">
+              {workflows.filter((w) => !w.preset).map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
+            </optgroup>
           </select>
           <input value={wfName} onChange={(e) => setWfName(e.target.value)} className="w-36 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs" placeholder="工作流名称" />
           <Btn size="sm" onClick={newWorkflow}>新建</Btn>
           <Btn size="sm" onClick={runTest} disabled={busy}>{busy ? <Loader2 size={13} className="animate-spin" /> : <Play size={13} />} 运行</Btn>
-          <Btn size="sm" variant="primary" onClick={() => saveWorkflow().then((id) => id && notify('工作流已保存（服务端持久化）'))} disabled={busy}><Save size={13} /> 保存</Btn>
+          <Btn size="sm" variant="primary" onClick={() => saveWorkflow().then((id) => id && notify(wfId && wfId.startsWith('PRESET-') ? '已另存为我的工作流副本（模板保持不变）' : '工作流已保存（服务端持久化）'))} disabled={busy}><Save size={13} /> 保存</Btn>
           {wfId && <Btn size="sm" variant="ghost" onClick={() => setPendingDelete('workflow')}><Trash2 size={12} /></Btn>}
         </>
       }
     >
       {toast && <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm font-medium text-emerald-700">{toast}</div>}
+
+      {/* 预设工作流模板库：一键载入，示例输入自动填好，直接可运行 */}
+      <Card>
+        <CardHeader
+          title="常用工作流预设"
+          desc="开箱即用的模板：点击卡片即载入节点与示例输入，直接点「运行」即可看到真实结果；修改后保存会自动另存为副本，不影响模板本身"
+          actions={<Badge color="violet">{WORKFLOW_PRESETS.length} 个模板</Badge>}
+        />
+        <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 xl:grid-cols-5">
+          {WORKFLOW_PRESETS.map((p) => (
+            <button
+              key={p.id}
+              onClick={() => loadPreset(p)}
+              className={cn(
+                'group rounded-xl border p-3 text-left transition-all hover:-translate-y-0.5 hover:shadow-card',
+                wfId === p.id ? 'border-brand-400 bg-brand-50/60' : 'border-slate-200 bg-white hover:border-brand-300',
+              )}
+            >
+              <div className="mb-1.5 flex items-center justify-between gap-1">
+                <span className="flex items-center gap-1.5 text-[12px] font-semibold text-slate-800">
+                  {p.needsLlm ? <Sparkles size={13} className="text-violet-500" /> : <Zap size={13} className="text-amber-500" />}
+                  {p.name}
+                </span>
+                <Badge color={p.needsLlm ? 'violet' : 'green'}>{p.needsLlm ? 'AI 增强' : '离线可跑'}</Badge>
+              </div>
+              <div className="mb-2 line-clamp-2 text-[10px] leading-4 text-slate-500">{p.desc}</div>
+              <div className="flex items-center justify-between">
+                <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-500">{p.tag}</span>
+                <span className="flex items-center gap-0.5 text-[10px] font-medium text-brand-600 opacity-0 transition-opacity group-hover:opacity-100"><Play size={10} /> 一键载入</span>
+              </div>
+            </button>
+          ))}
+        </div>
+      </Card>
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-[180px_minmax(0,1fr)_300px]">
         {/* 节点面板 */}
@@ -334,9 +383,26 @@ export default function AipLogic() {
                   </Field>
                 </>
               )}
+              {sel.type === 'transform' && (
+                <>
+                  <Field label="转换方式" hint="本地确定性执行，无需 AI 网关">
+                    <Select className="w-full" value={sel.transform ?? 'extract'} onChange={(e) => updateStep(sel.id, { transform: e.target.value as WorkflowStep['transform'] })}>
+                      <option value="extract">提取数值字段（供条件判断）</option>
+                      <option value="keyword">关键词命中标记</option>
+                      <option value="format">格式化输出</option>
+                    </Select>
+                  </Field>
+                  {sel.transform !== 'keyword' && sel.transform !== 'format' && (
+                    <Field label="字段名" hint="如：健康度 / 金额"><Input value={sel.field ?? ''} onChange={(e) => updateStep(sel.id, { field: e.target.value })} placeholder="健康度" /></Field>
+                  )}
+                  {sel.transform === 'keyword' && (
+                    <Field label="关键词" hint="逗号分隔，命中任一即标记"><Input value={sel.words ?? ''} onChange={(e) => updateStep(sel.id, { words: e.target.value })} placeholder="紧急,停机,故障" /></Field>
+                  )}
+                </>
+              )}
               {sel.type === 'condition' && (
                 <>
-                  <Field label="条件表达式" hint="如：置信度 > 0.8 / 金额 >= 100">
+                  <Field label="条件表达式" hint="如：置信度 > 0.8 / 金额 >= 100 / 包含 命中">
                     <Input value={sel.condition ?? ''} onChange={(e) => updateStep(sel.id, { condition: e.target.value })} placeholder="如：置信度 > 0.8" />
                   </Field>
                   <div className="rounded-lg border border-slate-100 bg-slate-50/60 p-2.5">
