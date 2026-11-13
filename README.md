@@ -5,6 +5,7 @@
 **把企业的数据、知识、流程与 AI 统一在一个语义层上**
 
 [![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)]()
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 [![React](https://img.shields.io/badge/React_18-TypeScript-61dafb.svg)]()
 [![Hono](https://img.shields.io/badge/Hono-API_server-e36002.svg)]()
 [![SQLite](https://img.shields.io/badge/SQLite-Drizzle_ORM-003b57.svg)]()
