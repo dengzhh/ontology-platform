@@ -41,6 +41,7 @@ const NAMES = {
   pipelines: ['ERP备件库存同步'],
   marketplace: ['连锁门店库存管理包'],
   workflows: ['设备停机标准处置流程', '采购申请分级审批流程'],
+  machineryFlows: ['设备检修申请流程'],
   conversations: ['设备运维助理', '设备巡检问答'],
   cipherRules: ['客户手机号脱敏'],
   lifecyclePolicies: ['操作日志180天保留'],
@@ -165,6 +166,15 @@ function cleanData() {
       for (const w of kept) { if (w && w.name) seen.set(w.name, w) }
       const merged = Array.from(seen.values())
       if (merged.length !== list.length) run('UPDATE settings SET value=? WHERE key=?', JSON.stringify({ workflows: merged }), row.key)
+    }
+  } catch { /* ignore */ }
+  // 自定义流程（machinery flows）按名称从 settings 移除
+  try {
+    for (const row of raw(`SELECT key, value FROM settings WHERE key LIKE 'machinery_flows_%'`)) {
+      const data = (() => { try { return JSON.parse(String(row.value)) } catch { return {} } })()
+      const list = Array.isArray(data.flows) ? data.flows : []
+      const kept = list.filter((f) => !NAMES.machineryFlows.includes(f.name) && f.name !== '设备检修申请流程')
+      if (kept.length !== list.length) run('UPDATE settings SET value=? WHERE key=?', JSON.stringify({ flows: kept }), row.key)
     }
   } catch { /* ignore */ }
   // 模块 3-6 产生的执行类数据（全量清：治理执行/排程/部署为本脚本主要来源）
@@ -473,6 +483,26 @@ cleanData()
   const ag = await api('POST', '/api/aip/agents', { name: `设备运维助理`, desc: '面向设备运维的智能问答与工具助手', tools: ['ontology_overview', 'query_objects'], guardrail: { maskSensitive: true, requireApprovalForActions: true } })
   ok('Agent Studio·新建 Agent', ag, ag.data?.id || '')
   ok('AIP·助手会话', await api('POST', '/api/ai/conversations', { title: `设备巡检问答` }))
+
+  // 流程编排：真实流程定义（节点画布可编辑持久化）
+  {
+    const acts = (await api('GET', '/api/actions')).data?.actions ?? []
+    const act = acts.find((a) => !a.needsApproval) ?? acts[0]
+    const flowNodes = [
+      { id: 's1', type: 'start', label: '车间发起检修申请', x: 40, y: 80, next: 's2' },
+      { id: 's2', type: 'approval', label: '设备主管审批', x: 280, y: 80, next: 's3' },
+      { id: 's3', type: 'action', label: '执行登记供应商档案', x: 520, y: 80, next: 's4', ...(act ? { actionId: act.id } : {}) },
+      { id: 's4', type: 'notify', label: '通知发起人结果', x: 760, y: 80, next: 's5' },
+      { id: 's5', type: 'end', label: '流程归档', x: 900, y: 80 },
+    ]
+    const mf = await api('POST', '/api/p10plus/machinery/flows', { name: '设备检修申请流程', nodes: flowNodes })
+    ok('流程编排·流程定义持久化', mf, mf.data?.id || '')
+    const mfl = (await api('GET', '/api/p10plus/machinery/flows')).data?.flows ?? []
+    const saved = mfl.find((f) => f.name === '设备检修申请流程')
+    ok('流程编排·节点与连线回读', { ok: !!saved && saved.nodes.length === 5 && saved.nodes[0].next === 's2' && (saved.nodes[2].actionId ?? '') === (act?.id ?? ''), status: 200, data: {} }, `nodes=${saved?.nodes?.length} 绑定动作=${saved?.nodes?.[2]?.actionId ? '是' : '否'}`)
+    const badFlow = await api('POST', '/api/p10plus/machinery/flows', { name: '测试非法流程', nodes: [{ id: 'a', type: 'start', label: 'a', next: 'NOPE' }] }, ORG, 400)
+    ok('流程编排·断链保存被拒(400)', badFlow)
+  }
 }
 
 /* ---------------- 8. 治理 / 管理 ---------------- */

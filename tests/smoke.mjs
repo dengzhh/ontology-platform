@@ -433,6 +433,31 @@ async function main() {
     }
   }
 
+  // 2.11c 流程编排：自定义流程 CRUD + 节点/连线/动作绑定校验
+  {
+    const acts = await req('GET', '/api/actions')
+    const act = (acts.data?.actions ?? [])[0]
+    const nodes = [
+      { id: 's1', type: 'start', label: '发起申请', x: 40, y: 80, next: 's2' },
+      { id: 's2', type: 'approval', label: '主管审批', x: 280, y: 80, next: 's3' },
+      { id: 's3', type: 'action', label: '执行动作', x: 520, y: 80, next: 's4', ...(act ? { actionId: act.id } : {}) },
+      { id: 's4', type: 'end', label: '结束', x: 760, y: 80 },
+    ]
+    const made = await req('POST', '/api/p10plus/machinery/flows', { name: `${PREFIX}_检修流程`, nodes }, 200)
+    const fid = made.data?.id
+    log(made.ok && !!fid, 'POST /p10plus/machinery/flows 保存自定义流程（节点/坐标/连线/动作绑定）', `id=${fid}`)
+    if (fid) {
+      created.push({ label: `流程 ${fid}`, cleanup: () => req('DELETE', `/api/p10plus/machinery/flows/${fid}`) })
+      const list = await req('GET', '/api/p10plus/machinery/flows')
+      const saved = (list.data?.flows ?? []).find((f) => f.id === fid)
+      log(!!saved && saved.nodes.length === 4 && saved.nodes[0].next === 's2' && saved.nodes[2].x === 520 && saved.nodes[2].actionId === act?.id, '流程定义回读一致（节点/坐标/连线/绑定）', '')
+    }
+    const bad = await req('POST', '/api/p10plus/machinery/flows', { name: `${PREFIX}_断链流程`, nodes: [{ id: 'a', type: 'start', label: 'a', next: 'NOPE' }] }, 400)
+    log(bad.ok, '流程断链目标不存在返回 400', '')
+    const empty = await req('POST', '/api/p10plus/machinery/flows', { name: `${PREFIX}_空流程`, nodes: [] }, 400)
+    log(empty.ok, '流程空节点返回 400', '')
+  }
+
   // 2.12 识别模板（含字段映射，验证不清空）
   {
     const t = await req('POST', '/api/scan/templates', { name: `${PREFIX}_TPL`, fieldMapping: { 合计: 'amount' }, matchKeywords: ['冒烟'] }, 200)

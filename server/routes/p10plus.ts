@@ -175,6 +175,69 @@ p10plusRoutes.get('/machinery', (c) => {
   })
 })
 
+/* ---------- 流程编排（自定义流程定义 CRUD：节点画布可编辑并持久化） ---------- */
+
+/** 流程节点：action 节点可绑定真实动作类型（actionId 指向 actionTypes） */
+interface MachNode {
+  id: string
+  type: 'start' | 'action' | 'approval' | 'notify' | 'end'
+  label: string
+  actionId?: string
+  x?: number
+  y?: number
+  next?: string
+}
+interface MachFlow { id: string; name: string; nodes: MachNode[]; updatedAt: number }
+
+function readMachFlows(spaceId: string): MachFlow[] {
+  const row = db.select().from(tables.settings).where(eq(tables.settings.key, `machinery_flows_${spaceId}`)).get()
+  return (row?.value as unknown as { flows?: MachFlow[] })?.flows ?? []
+}
+function writeMachFlows(spaceId: string, flows: MachFlow[]) {
+  const key = `machinery_flows_${spaceId}`
+  const value = { flows }
+  const now = Date.now()
+  const existing = db.select().from(tables.settings).where(eq(tables.settings.key, key)).get()
+  if (existing) db.update(tables.settings).set({ value, updatedAt: now }).where(eq(tables.settings.key, key)).run()
+  else db.insert(tables.settings).values({ key, value, updatedAt: now }).run()
+}
+
+p10plusRoutes.get('/machinery/flows', (c) => {
+  return c.json({ flows: readMachFlows(c.get('space').id) })
+})
+
+p10plusRoutes.post('/machinery/flows', async (c) => {
+  const space = c.get('space')
+  const body = await c.req.json<{ id?: string; name: string; nodes: MachNode[] }>().catch((): { id?: string; name: string; nodes: MachNode[] } => ({ name: '', nodes: [] }))
+  if (!body.name?.trim()) return c.json({ error: '请填写流程名称' }, 400)
+  const nodes = body.nodes ?? []
+  if (!Array.isArray(nodes) || nodes.length === 0) return c.json({ error: '至少需要一个节点' }, 400)
+  if (new Set(nodes.map((n) => n.id)).size !== nodes.length) return c.json({ error: '节点 id 重复' }, 400)
+  const validTypes = new Set(['start', 'action', 'approval', 'notify', 'end'])
+  if (nodes.some((n) => !validTypes.has(n.type))) return c.json({ error: '存在未知节点类型' }, 400)
+  for (const n of nodes) {
+    if (n.next && !nodes.some((x) => x.id === n.next)) return c.json({ error: `节点「${n.label}」的连线目标 ${n.next} 不存在` }, 400)
+    if (n.type === 'action' && n.actionId) {
+      const at = db.select().from(tables.actionTypes).all().find((a) => a.id === n.actionId && a.spaceId === space.id)
+      if (!at) return c.json({ error: `节点「${n.label}」绑定的动作类型不存在` }, 400)
+    }
+  }
+  const list = readMachFlows(space.id)
+  const id = body.id ?? `MF-${Date.now().toString(36).toUpperCase()}`
+  const sameName = list.find((f) => f.name === body.name!.trim() && f.id !== id)
+  const finalId = !body.id && sameName ? sameName.id : id
+  const flow: MachFlow = { id: finalId, name: body.name.trim(), nodes, updatedAt: Date.now() }
+  const next = list.some((f) => f.id === finalId) ? list.map((f) => (f.id === finalId ? flow : f)) : [...list, flow]
+  writeMachFlows(space.id, next)
+  return c.json({ id: finalId })
+})
+
+p10plusRoutes.delete('/machinery/flows/:id', (c) => {
+  const space = c.get('space')
+  writeMachFlows(space.id, readMachFlows(space.id).filter((f) => f.id !== c.req.param('id')))
+  return c.json({ ok: true })
+})
+
 /* ---------- 管道（审计日志→数据同步记录） ---------- */
 p10plusRoutes.get('/pipelines', (c) => {
   const space = c.get('space')
