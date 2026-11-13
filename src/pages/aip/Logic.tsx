@@ -337,19 +337,20 @@ export default function AipLogic() {
           </div>
         </div>
 
-        {/* 画布 */}
-        <div className="canvas-grid min-h-[440px] rounded-xl border border-slate-200 bg-white p-2">
+        {/* 画布：支持滚轮缩放 / 空白拖拽平移 / 控件复位，节点点选与拖拽在任意缩放下均准确 */}
+        <div className="min-h-[440px]">
           <FlowCanvas
             nodes={canvasNodes}
             edges={canvasEdges}
             width={1000}
             height={420}
+            zoomable
             selectedId={selectedStep}
             onNodeClick={(id) => setSelectedStep(id)}
             onNodeMove={(id, x, y) => updateStep(id, { x, y })}
           />
           <div className="mt-2 flex items-center justify-center gap-3 text-[11px] text-slate-400">
-            <span>{steps.length} 个节点 · 点击节点编辑 / 拖拽调整布局</span>
+            <span>{steps.length} 个节点 · 点击节点编辑 / 拖拽调整布局 / 滚轮缩放</span>
             <span className="flex items-center gap-1"><span className="h-0.5 w-4 bg-emerald-500" />是</span>
             <span className="flex items-center gap-1"><span className="h-0.5 w-4 border-t-2 border-dashed border-amber-500" />否</span>
           </div>

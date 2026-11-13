@@ -333,12 +333,14 @@
 
 #### ㉛ 工作流编排 `/aip/logic`
 
-- **功能**：可视化节点编排（点选编辑/拖拽布局/上移下移/复制/删除确认）、条件分支连线、6 个开箱即用预设（4 个离线可跑）、保存/删除/测试运行、逐步执行记录、另存副本。
-- **原理**：`server/routes/logic.ts` + `shared/workflowTemplates.ts`：`transform` 离线节点（extract 提数值 / keyword 命中标记 / format）、条件节点按 `nextYes/nextNo` 真实跳转（`byId` Map + `visited` 防环 + 20 步上限）、`llm` 节点网关失败降级规则摘要并标 `branch:'degraded'`；工作流存 `settings.key='logic_workflows_${spaceId}'`；预设不落库动态合并；保存预设自动另存「副本」。`FlowCanvas` 支持点选/拖拽（viewBox 坐标换算）。
-- **边界**：`WorkflowStep.model` 字段服务端未使用（统一走全局 AI 配置）；画布连线仅按数组顺序 + nextYes/nextNo 生成；无并发/定时触发/版本管理；2 个 AI 增强预设依赖网关。详见 [§4.2](#42-函数沙箱与工作流)。
-- **验证**：smoke 预设契约/分支跳转；load.mjs 88+；截图 `aip-logic-presets.png`。
+- **功能**：可视化节点编排（点选编辑/拖拽布局/上移下移/复制/删除确认）、**画布滚轮缩放 / 空白拖拽平移 / 控件放大缩小复位 / 百分比**、条件分支连线、6 个开箱即用预设（4 个离线可跑）、保存/删除/测试运行、逐步执行记录、另存副本。
+- **原理**：`server/routes/logic.ts` + `shared/workflowTemplates.ts`：`transform` 离线节点（extract 提数值 / keyword 命中标记 / format）、条件节点按 `nextYes/nextNo` 真实跳转（`byId` Map + `visited` 防环 + 20 步上限）、`llm` 节点网关失败降级规则摘要并标 `branch:'degraded'`；工作流存 `settings.key='logic_workflows_${spaceId}'`；预设不落库动态合并；保存预设自动另存「副本」。`FlowCanvas` 支持点选/拖拽（viewBox 坐标换算）与可选 `zoomable`：单 `<g transform="translate(tx ty) scale(s)">` 承载缩放平移，节点点击/拖拽把屏幕坐标反算到内容坐标，**任意缩放下操作准确**；不传 `zoomable` 的管道构建/流程编排页保持静态（向后兼容）。
+- **边界**：`WorkflowStep.model` 字段服务端未使用（统一走全局 AI 配置）；画布连线仅按数组顺序 + nextYes/nextNo 生成；无并发/定时触发/版本管理；2 个 AI 增强预设依赖网关；缩放范围 30%~400%。详见 [§4.2](#42-函数沙箱与工作流)。
+- **验证**：smoke 预设契约/分支跳转；load.mjs 92/92；浏览器实测缩放/平移/复位/缩放后节点拖拽与点选；截图 `aip-logic-presets.png`、`aip-logic-zoom.png`。
 
 ![工作流预设](screenshots/aip-logic-presets.png)
+
+![工作流画布缩放（125%）](screenshots/aip-logic-zoom.png)
 
 #### ㉜ 智能体构建 `/aip/agents`
 
@@ -595,7 +597,8 @@ node tests/smoke.mjs     # 177 项黑盒断言
 | `knowledge-search.png` | 知识检索 | `knowledge-library.png` | 知识库 |
 | `contour.png` | 探索分析 | `aip-chatbi.png` | ChatBI 条形图 |
 | `aip-chatbi-trend.png` | ChatBI 趋势折线 | `aip-chatbi-cross.png` | ChatBI 交叉热力表 |
-| `aip-logic-presets.png` | 工作流预设 | `doc-analysis.png` | 文档分析 |
+| `aip-logic-presets.png` | 工作流预设 | `aip-logic-zoom.png` | 工作流画布缩放 |
+| `doc-analysis.png` | 文档分析 | | |
 | `data-connections.png` | 数据连接 | `datasets.png` | 数据集 |
 | `lineage.png` | 数据血缘 | `approvals.png` | 审批中心 |
 | `audit.png` | 审计日志 | `control-panel.png` | 控制面板（已裁去敏感配置） |
