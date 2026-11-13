@@ -73,6 +73,15 @@ export const AI_TOOLS: AiToolDef[] = [
       { name: 'to', type: 'string', desc: '结束日期 YYYY-MM-DD（可选）', required: false },
       { name: 'top', type: 'number', desc: '只取数值最大的前 N 组（TOP-N），如「TOP5 设备 / 前 3 大客户」→ 5 / 3', required: false },
       { name: 'compare', type: 'string', desc: '同比/环比对比：环比上一期填 prev，同比去年同期填 yoy；必须同时给 from/to（当期窗口），返回两窗口总量与增减幅', required: false },
+      { name: 'crossBy', type: 'string', desc: '第二维度（列），做二维交叉分析：如「各设备类型的状态分布」→ groupBy=type + crossBy=status；列维度取总和前 12', required: false },
+    ],
+  },
+  {
+    name: 'ask_clarification',
+    description: '向用户反问澄清。当问题模糊（未指明统计哪类对象/哪个维度/哪种口径）、或 analyze_objects 报「字段不存在」时调用：给出问题与不超过 6 个候选项，等用户选择后继续；不要瞎猜字段或口径',
+    parameters: [
+      { name: 'question', type: 'string', desc: '反问的问题，如「想统计哪类对象？」', required: true },
+      { name: 'options', type: 'string', desc: '候选项，逗号分隔，≤6 个，如「生产设备, 维修工单, 销售订单」；用户点击即作为答复', required: false },
     ],
   },
   {

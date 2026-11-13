@@ -304,7 +304,8 @@ function buildSystemPrompt(user: SessionUser, page: string, spaceName: string, s
     '工作准则：',
     '1. 涉及打开/查看某页面 → 调用 navigate；查询业务对象明细 → query_objects；了解本体 → ontology_overview；管理用户 → list_users / invite_user。',
     '2. 【系统用法类优先】用户问「某功能在哪儿配置 / 怎么用 / 什么是某概念 / 平台怎么设置」等**关于本平台操作方法**的问题 → 依据上方「平台功能入口对照」直接给出页面路径与一句话说明，并调用 navigate 跳到对应页面；**不要调用 analyze_objects / search_knowledge / query_objects 等数据工具**（这类问题不是查业务数据，也不是查知识库文档）。',
-    '3. 【ChatBI】问「各/按…统计、多少、占比、趋势、最多/最大、平均、分布、画个图、TOP几、环比、同比」等分析类问题 → 必须调用 analyze_objects（选 typeId、groupBy，有金额类问题带 metric，问趋势带 bucket=month），基于真实聚合结果回答；不要只列原始对象。问「TOP N / 前N大」带 top=N；问「环比」带 compare=prev、问「同比」带 compare=yoy，并同时给 from/to 当期窗口（如问环比上月 → from/to 为上个完整月的起止日）；回答对比类问题时必须给出本期值、上期值与增减百分比。',
+    '3. 【ChatBI】问「各/按…统计、多少、占比、趋势、最多/最大、平均、分布、画个图、TOP几、环比、同比」等分析类问题 → 必须调用 analyze_objects（选 typeId、groupBy，有金额类问题带 metric，问趋势带 bucket=month），基于真实聚合结果回答；不要只列原始对象。问「TOP N / 前N大」带 top=N；问「环比」带 compare=prev、问「同比」带 compare=yoy，并同时给 from/to 当期窗口（如问环比上月 → from/to 为上个完整月的起止日）；回答对比类问题时必须给出本期值、上期值与增减百分比。问「各X的Y分布 / 按X看Y / 二维交叉」→ groupBy 为行维度、再带 crossBy=列维度（返回交叉矩阵，按矩阵总结行列规律）。',
+    '3b. 【主动澄清】问题模糊（没说清统计哪类对象、哪个维度或哪种口径）、或 analyze_objects 结果报「字段不存在/不是合法属性」时 → 调用 ask_clarification 反问一句并给 ≤6 个候选项（用户点击即答复），得到答复后再继续；不要替用户瞎猜字段或口径。',
     '4. 制度、流程、规范、故障处理等「文档里怎么写」的问题 → 必须先调用 search_knowledge 检索知识库，并基于检索结果回答、注明来源文档。',
     '5. 需要改数据时 → list_actions 查看可用动作，再用 execute_action 执行（需审批的会提示）。',
     '6. 【高级能力】场景/合并→manage_scenario；对象集比较→compare_objects；派生属性→eval_derived；部署/晋升/回滚→apollo_deploy；时序采集→collect_timeseries；外部数据源→sync_source；审批→decide_approval；空间→space_action；函数→run_function；管道→run_pipeline；排程→get_schedule；治理→governance_scan。按用户意图直接调用对应工具，不要绕去 navigate 或查数据。',
@@ -400,15 +401,40 @@ function localAnswer(user: SessionUser, text: string, spaceId: string): LlmResul
     const hit = Object.keys(TYPE_ALIASES).find((k) => t.includes(k))
     // 没带类型词但明显是消费/金额类问法时，兜底用 expense（组织空间会由前端字段归一给出可用字段）
     const type = hit ? TYPE_ALIASES[hit] : /(支出|消费|花费|金额|营收|类别)/.test(t) ? 'expense' : undefined
-    if (type) {
+    // 主动澄清：问法是分析类但没指明对象类型 → 反问并列出当前空间的对象类型（用户点击选项即答复）
+    if (!type) {
+      const typeNames = db.select().from(tables.objectTypes).all()
+        .filter((x) => x.spaceId === spaceId)
+        .map((x) => x.name).slice(0, 6)
+      return {
+        reply: '',
+        toolCalls: [{ id: 'local-clarify', name: 'ask_clarification', args: { question: '想统计哪类对象？', options: typeNames.join(', ') } }],
+      }
+    }
+    {
       let groupBy = 'category'
-      if (/(按|各)(日期|月份|月|时间)|趋势|按月/.test(t)) groupBy = 'date'
-      else if (/(按|各)(商户|店铺)/.test(t)) groupBy = 'merchant'
-      else if (/(按|各)(状态)/.test(t)) groupBy = 'status'
-      else if (/(按|各)(支付方式)/.test(t)) groupBy = 'payment'
-      else if (/(按|各)(优先级)/.test(t)) groupBy = 'priority'
-      else if (/(设备|机器)/.test(t) && /TOP|前\s*\d|最大|最多/.test(t)) groupBy = 'name'
+      let crossBy: string | undefined
+      // 二维交叉：「各X的Y分布/构成/占比」或「按X看各Y」或「按X、Y统计」
+      const cm = t.match(/(?:各|按)?([^，。的]{1,10})的([^，。]{1,10})(?:分布|构成|占比)/) ?? t.match(/按([^，。看]{1,10})看各?([^，。]{1,10})/) ?? t.match(/按([^，。、和与x×]{1,10})[、和与x×]([^，。]{1,10})(?:统计|分析|交叉)/)
+      if (cm) {
+        const rowTxt = cm[1].replace(/^(各|按)/, '')
+        const colWord = cm[2].match(/状态|类型|优先级|类别|支付方式|行业|等级/) // 列维度取第一个枚举词
+        const rowIsDate = /月|日期|时间/.test(rowTxt)
+        if (colWord) {
+          groupBy = rowIsDate ? 'date' : rowTxt.slice(-5) // 行维度词（取尾部防带类型前缀，如「设备类型」）
+          crossBy = colWord[0]
+        }
+      }
+      if (!crossBy) {
+        if (/(按|各)(日期|月份|月|时间)|趋势|按月/.test(t)) groupBy = 'date'
+        else if (/(按|各)(商户|店铺)/.test(t)) groupBy = 'merchant'
+        else if (/(按|各)(状态)/.test(t)) groupBy = 'status'
+        else if (/(按|各)(支付方式)/.test(t)) groupBy = 'payment'
+        else if (/(按|各)(优先级)/.test(t)) groupBy = 'priority'
+        else if (/(设备|机器)/.test(t) && /TOP|前\s*\d|最大|最多/.test(t)) groupBy = 'name'
+      }
       const args: Record<string, unknown> = { typeId: type, groupBy }
+      if (crossBy) args.crossBy = crossBy
       if (/(金额|花费|花了|总额|营收|收入|销售额|均价|平均)/.test(t)) args.metric = 'amount'
       if (/(停机)/.test(t)) args.metric = 'downtime'
       if (/(趋势|按月|每月|月份)/.test(t)) args.bucket = 'month'

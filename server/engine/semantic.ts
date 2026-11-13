@@ -74,8 +74,8 @@ export function semanticGuard(text: string, spaceId: string): { blocked: boolean
   if (resolveTerms(text, spaceId).length > 0) return { blocked: false }
   // 明细查询（如「查询设备 "M-2041"」）与导航/帮助走工具，不需要业务口径
   if (PLAIN_ACTION.test(text)) return { blocked: false }
-  // ChatBI 分组聚合走「对象已定义属性」而非自由指标口径，有明确统计维度时放行给 analyze_objects
-  if (/(统计|聚合|占比|分布|趋势|按.*(分组|统计|分析|汇总)|各.*(多少|花费)|画个图|图表)/.test(text)) return { blocked: false }
+  // ChatBI 分组聚合走「对象已定义属性」而非自由指标口径，有明确统计维度/对比/交叉/TOP 问法时放行给 analyze_objects
+  if (/(统计|聚合|占比|分布|趋势|环比|同比|按.{0,10}看|按.*(分组|统计|分析|汇总|对比)|各.*(多少|花费)|TOP\s*\d|前\s*\d+\s*[个条名]|最大[的]?\s*\d|画个图|图表)/.test(text)) return { blocked: false }
   return {
     blocked: true,
     reply: `当前本体空间还没有能回答「${text.slice(0, 40)}」的可信业务定义，为避免给出错误口径，我不做猜测。\n\n已认证的业务术语/指标有：${all.map((r) => r.term).join('、')}。\n你也可以换个问法（使用上面的术语或其同义词），或到「本体管理器 → 业务术语」补充定义并认证。`,

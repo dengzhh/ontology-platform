@@ -18,9 +18,18 @@ interface AnalysisCompare {
   delta: number
   deltaPct: number | null
 }
+/** 二维交叉矩阵（/aggregate?crossBy=第二维度 返回） */
+interface AnalysisCross {
+  rowBy: { key: string; name: string }
+  colBy: { key: string; name: string }
+  columns: string[]
+  rows: { name: string; rowCount: number; rowSum: number; cells: Record<string, { sum: number; count: number }> }[]
+  metric: 'sum' | 'count'
+}
 interface AnalysisResult {
   groups: ChartData[]
   compare?: AnalysisCompare | null
+  cross?: AnalysisCross | null
   groupBy: { key: string; name: string }
   metric: { key: string; name: string } | null
   total: number
@@ -35,6 +44,8 @@ interface UiMsg {
   cites?: string[]
   /** 该条消息里工具产出的聚合结果，用于渲染对话内柱图 */
   analysis?: AnalysisResult
+  /** ask_clarification 反问的候选项（点击即作为用户答复发送） */
+  clarify?: string[]
 }
 
 /** 与服务端的协议消息 */
@@ -62,6 +73,9 @@ const SUGGESTIONS_BY_SPACE: Record<string, string[]> = {
     '订单金额环比上月',
     '订单金额同比去年',
     '停机时长 TOP5 设备',
+    '各设备类型的状态分布',
+    '按月看各状态订单金额',
+    '统计一下',
     '维修工单怎么处理',
     '有哪些动作',
     '查看当前排程与利用率',
@@ -181,6 +195,11 @@ export default function AssistPanel() {
         const lines = r.results.map((x, i) => `[${i + 1}] 《${x.docTitle}》第${x.idx + 1}块（相关度 ${x.score}）\n${x.text.slice(0, 220)}`)
         return `知识库检索到 ${r.total} 个相关片段：\n\n${lines.join('\n\n')}`
       }
+      if (name === 'ask_clarification') {
+        // 不调 API：反问文本作为工具结果展示，候选选项由 send 循环渲染为可点 chips
+        const q = String(args.question ?? '能补充一点信息吗？')
+        return q
+      }
       if (name === 'analyze_objects') {
         // 类型 + 属性定义一起拿：把模型给的中文显示名归一成真实属性 key，避免反复 400
         const typeArg = String(args.typeId ?? '')
@@ -205,6 +224,11 @@ export default function AssistPanel() {
         if (metric && valid(metric)) q.set('metric', metric)
         // 兜底：按日期属性分组但模型漏传 bucket 时，默认按月分桶（避免按天爆炸成海量组）
         if (!args.bucket && props.find((p) => p.key === groupBy && p.type === 'date')) q.set('bucket', 'month')
+        const crossBy = norm(args.crossBy)
+        if (crossBy) {
+          if (!valid(crossBy)) return `交叉维度「${String(args.crossBy ?? '')}」不是「${t.name}」的合法属性。可用字段：${props.map((p) => `${p.name}(${p.key})`).join('、')}。请改用其中之一，或调用 ask_clarification 让用户选择。`
+          q.set('crossBy', crossBy)
+        }
         for (const k of ['bucket', 'from', 'to', 'compare'] as const) {
           const v = args[k]
           if (v) q.set(k, String(v))
@@ -212,7 +236,17 @@ export default function AssistPanel() {
         if (args.top) q.set('top', String(Math.max(1, Math.min(50, Number(args.top) || 5))))
         const r = await api<AnalysisResult & { error?: string }>(`/dashboard/aggregate?${q}`)
         if (r.error) return `分析失败：${r.error}`
-        lastAnalysis.current = { groups: r.groups ?? [], groupBy: r.groupBy, metric: r.metric, total: r.total, applied: r.applied ?? {}, compare: r.compare ?? undefined }
+        lastAnalysis.current = { groups: r.groups ?? [], groupBy: r.groupBy, metric: r.metric, total: r.total, applied: r.applied ?? {}, compare: r.compare ?? undefined, cross: r.cross ?? undefined }
+        // 二维交叉：给 LLM 矩阵文本（行×列 + 合计），让其总结行列规律
+        if (r.cross) {
+          const cr = r.cross
+          const cv = (cell: { sum: number; count: number }) => (cr.metric === 'sum' ? cell.sum : cell.count)
+          const matrix = [
+            `| ${cr.rowBy.name}＼${cr.colBy.name} | ${cr.columns.join(' | ')} | 合计 |`,
+            ...cr.rows.slice(0, 10).map((row) => `| ${row.name} | ${cr.columns.map((c2) => cv(row.cells[c2] ?? { sum: 0, count: 0 })).join(' | ')} | ${cr.metric === 'sum' ? row.rowSum : row.rowCount} |`),
+          ].join('\n')
+          return `「${t.name}」二维交叉分析（共 ${r.total} 个对象，${cr.rows.length} 行 × ${cr.columns.length} 列，指标=${cr.metric === 'sum' ? (r.metric?.name ?? '求和') + '总和' : '笔数'}）：\n${matrix}\n\n请基于以上真实矩阵总结：哪一行总量最大、哪一列最集中、有无突出的异常单元格。`
+        }
         const label = r.metric ? r.metric.name : '笔数'
         const topSuffix = r.applied?.top ? `，取 TOP${String(r.applied.top)}` : ''
         // 时间序列（升序）给最近 12 组并注明，避免 LLM 只总结到最早的旧数据；其余取前 10（降序最大优先）
@@ -452,6 +486,17 @@ export default function AssistPanel() {
           // 中间轮：展示工具链；若本轮含聚合分析，把图表附在这条消息上
           const analysis = lastAnalysis.current ?? undefined
           setMsgs((m) => [...m, { role: 'ai', content: res.reply || '', tools: toolChips, ...(analysis ? { analysis } : {}) }])
+          // ask_clarification 是终态：渲染反问与可点选项，等用户点击答复，不回灌模型
+          const clarifyCall = res.toolCalls.find((tc) => tc.name === 'ask_clarification')
+          if (clarifyCall) {
+            const raw = clarifyCall.args.options
+            const options = (Array.isArray(raw) ? raw.map(String) : String(raw ?? '').split(/[,，、]/))
+              .map((s) => s.trim()).filter(Boolean).slice(0, 6)
+            const content = res.reply || String(clarifyCall.args.question ?? '能补充一点信息吗？')
+            setMsgs((m) => [...m, { role: 'ai', content, tools: toolChips, ...(options.length ? { clarify: options } : {}) }])
+            if (cid) api(`/ai/conversations/${cid}/messages`, { method: 'POST', body: { role: 'assistant', content } }).catch(() => {})
+            break
+          }
           // navigate 是终态动作（已跳转），不再回灌给模型，避免重复循环同一 toolCall
           if (res.toolCalls.some((tc) => tc.name === 'navigate')) {
             if (cid) api(`/ai/conversations/${cid}/messages`, { method: 'POST', body: { role: 'assistant', content: res.reply || '' } }).catch(() => {})
@@ -597,7 +642,35 @@ export default function AssistPanel() {
                           )}
                         </div>
                       )}
-                      {isTime ? (
+                      {a.cross ? (
+                        <div className="overflow-x-auto">
+                          <table className="w-full border-collapse text-[10px]">
+                            <thead>
+                              <tr className="text-slate-500">
+                                <th className="whitespace-nowrap px-1 py-1 text-left font-medium">{a.cross.rowBy.name}＼{a.cross.colBy.name}</th>
+                                {a.cross.columns.map((col) => <th key={col} className="whitespace-nowrap px-1 py-1 text-right font-medium">{col}</th>)}
+                                <th className="px-1 py-1 text-right font-medium">合计</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {a.cross.rows.map((row) => {
+                                const cv = (cell: { sum: number; count: number }) => (a.cross!.metric === 'sum' ? cell.sum : cell.count)
+                                const rowMax = Math.max(1, ...a.cross!.columns.map((col) => cv(row.cells[col] ?? { sum: 0, count: 0 })))
+                                return (
+                                  <tr key={row.name} className="border-t border-slate-100">
+                                    <td className="max-w-[72px] truncate whitespace-nowrap px-1 py-1 text-slate-600" title={row.name}>{row.name}</td>
+                                    {a.cross!.columns.map((col) => {
+                                      const v = cv(row.cells[col] ?? { sum: 0, count: 0 })
+                                      return <td key={col} className="px-1 py-1 text-right font-mono tabular-nums" style={{ background: v > 0 ? `rgba(99,102,241,${(0.06 + 0.42 * (v / rowMax)).toFixed(2)})` : '' }}>{v}</td>
+                                    })}
+                                    <td className="px-1 py-1 text-right font-mono font-semibold tabular-nums text-slate-700">{a.cross!.metric === 'sum' ? row.rowSum : row.rowCount}</td>
+                                  </tr>
+                                )
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      ) : isTime ? (
                         <div className="h-[130px] w-full">
                           <LineChart width={292} height={130} data={shown.map((g) => ({ name: g.name, value: val(g) }))} margin={{ top: 6, right: 8, bottom: 0, left: 8 }}>
                             <XAxis dataKey="name" tick={{ fontSize: 9, fill: '#94a3b8' }} interval="preserveStartEnd" tickLine={false} axisLine={{ stroke: '#e2e8f0' }} />
@@ -653,6 +726,20 @@ export default function AssistPanel() {
                     <FileSearch size={12} className="text-slate-400" />
                     {m.cites.map((ct, j) => (
                       <span key={j} className="rounded border border-brand-200 bg-brand-50 px-1.5 py-0.5 text-[10px] font-medium text-brand-700">{ct}</span>
+                    ))}
+                  </div>
+                )}
+                {/* ask_clarification 反问的候选选项：点击即作为用户答复发送 */}
+                {m.clarify && m.clarify.length > 0 && (
+                  <div className="flex max-w-full flex-wrap gap-1.5">
+                    {m.clarify.map((opt, j) => (
+                      <button
+                        key={j}
+                        onClick={() => send(opt)}
+                        className="rounded-full border border-brand-300 bg-white px-2.5 py-1 text-[11px] font-medium text-brand-700 shadow-sm transition-colors hover:bg-brand-50"
+                      >
+                        {opt}
+                      </button>
                     ))}
                   </div>
                 )}

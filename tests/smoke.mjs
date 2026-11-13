@@ -518,6 +518,17 @@ async function main() {
       }
       const badCmp = await req('GET', `/api/dashboard/aggregate?typeId=${t.id}&groupBy=${encodeURIComponent(t.properties[0].key)}&compare=prev`, undefined, 400)
       log(badCmp.ok, 'aggregate compare 缺 from/to 返回 400 并给出用法提示', badCmp.ok ? String(badCmp.data?.error ?? '').slice(0, 60) : `status=${badCmp.status}`)
+      // ChatBI v3：二维交叉矩阵（设备类型 × 状态）
+      if (ord) {
+        const cross = await req('GET', '/api/dashboard/aggregate?typeId=device&groupBy=type&crossBy=status')
+        const cr = cross.data?.cross
+        const cellOk = cr ? cr.rows.every((row) => Object.values(row.cells).every((cell) => typeof cell?.sum === 'number' && typeof cell?.count === 'number')) : false
+        log(cross.ok && !!cr && cr.columns.length >= 1 && cr.rows.length >= 1 && cr.colBy?.key === 'status' && cellOk, 'aggregate crossBy=二维交叉矩阵（行×列+单元格）', cr ? `${cr.rows.length} 行 × ${cr.columns.length} 列（${cr.rowBy.name}＼${cr.colBy.name}）` : '')
+        const badCross = await req('GET', '/api/dashboard/aggregate?typeId=device&groupBy=type&crossBy=nonexistent', undefined, 400)
+        log(badCross.ok, 'aggregate crossBy 非法字段返回 400', badCross.ok ? '' : `status=${badCross.status}`)
+        const crossCmp = await req('GET', '/api/dashboard/aggregate?typeId=device&groupBy=type&crossBy=status&compare=prev', undefined, 400)
+        log(crossCmp.ok, 'aggregate crossBy+compare 同用返回 400（互斥）', crossCmp.ok ? '' : `status=${crossCmp.status}`)
+      }
     } else log(false, '存在带数值属性的类型（前置条件）', '未找到')
   }
 

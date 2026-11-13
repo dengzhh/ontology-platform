@@ -130,12 +130,13 @@ dashboardRoutes.get('/overview', async (c) => {
  *  - from/to：时间范围筛选（YYYY-MM-DD，按 groupBy 的日期字段或对象 updatedAt）
  *  - sort=count|sum|avg|name + order=desc|asc：非时间序列默认按 sum 降序（金额最大优先）
  *  - top=N：排序后只取前 N 组（TOP-N，1-50）
- *  - compare=prev|yoy：环比（紧邻等长上期）/同比（去年同期）窗口对比，返回两窗口总量与增减幅
+ *  - compare=prev|yoy：环比（紧邻上一期）/同比（去年同期）窗口对比，返回两窗口总量与增减幅
+ *  - crossBy=第二维度：二维交叉矩阵（行=groupBy 值，列=crossBy 值，单元格=指标），列取总和前 12
  */
 dashboardRoutes.get('/aggregate', (c) => {
   const user = c.get('user')
   const space = c.get('space')
-  const { typeId, groupBy, metric, bucket, from, to, sort, order, top, compare } = c.req.query()
+  const { typeId, groupBy, metric, bucket, from, to, sort, order, top, compare, crossBy } = c.req.query()
   if (!typeId || !groupBy) return c.json({ error: '请指定 typeId 与 groupBy' }, 400)
 
   const t = db.select().from(tables.objectTypes).all().find((x) => x.id === typeId && x.spaceId === space.id)
@@ -147,6 +148,9 @@ dashboardRoutes.get('/aggregate', (c) => {
   if (!groupProp) return c.json({ error: `分组字段「${groupBy}」不存在。该类型可用字段：${props.map((p) => `${p.name}(${p.key})`).join('、')}` }, 400)
   const metricProp = metric ? props.find((p) => p.key === metric || p.name === metric) : undefined
   if (metric && !metricProp) return c.json({ error: `指标字段「${metric}」不存在。该类型数值字段：${props.filter((p) => p.type === 'number').map((p) => `${p.name}(${p.key})`).join('、')}` }, 400)
+  const crossProp = crossBy ? props.find((p) => p.key === crossBy || p.name === crossBy) : undefined
+  if (crossBy && !crossProp) return c.json({ error: `交叉维度「${crossBy}」不存在。该类型可用字段：${props.map((p) => `${p.name}(${p.key})`).join('、')}` }, 400)
+  if (crossProp && (compare === 'prev' || compare === 'yoy')) return c.json({ error: 'crossBy（交叉分析）暂不支持 compare（同比/环比），请二选一' }, 400)
   const isDateGroup = groupProp.type === 'date' || /date|time|day|month/i.test(groupProp.key)
   // 日期字段：用于时间范围筛选与分桶
   const dateKey = isDateGroup ? groupProp.key : (props.find((p) => p.type === 'date')?.key ?? '')
@@ -176,9 +180,10 @@ dashboardRoutes.get('/aggregate', (c) => {
     return `${y}-${String(mo).padStart(2, '0')}` // month（默认）
   }
 
-  /** 空间/类型过滤下推 SQL + 可选时间窗过滤 + 分组聚合（主窗口与同比/环比窗口共用） */
+  /** 空间/类型过滤下推 SQL + 可选时间窗过滤 + 分组聚合（主窗口与同比/环比窗口共用）；crossProp 时同时收集二维交叉单元格 */
   const groupKey = groupProp.key // 已过存在性校验，提取常量供闭包使用
-  function aggregateRange(f?: string, t2?: string): { total: number; groups: { name: string; count: number; sum: number; avg: number }[] } {
+  type CrossMap = Map<string, Map<string, { count: number; sum: number }>>
+  function aggregateRange(f?: string, t2?: string): { total: number; groups: { name: string; count: number; sum: number; avg: number }[]; cross: CrossMap | null } {
     let objs = db.select().from(tables.objects)
       .where(and(eq(tables.objects.spaceId, space.id), eq(tables.objects.typeId, typeId)))
       .all()
@@ -192,19 +197,31 @@ dashboardRoutes.get('/aggregate', (c) => {
       })
     }
     const groups = new Map<string, { count: number; sum: number; avg: number }>()
+    const cross: CrossMap | null = crossProp ? new Map() : null
     for (const o of objs) {
       const raw = (o.values as Record<string, unknown>)[groupKey]
       const gv = isDateGroup && bucket ? bucketOf(normalizeDate(raw)) : String(raw ?? '未设置')
       if (!groups.has(gv)) groups.set(gv, { count: 0, sum: 0, avg: 0 })
       const g = groups.get(gv)!
       g.count++
+      let metricVal = NaN
       if (metricProp) {
-        const mv = Number((o.values as Record<string, unknown>)[metricProp.key])
-        if (!Number.isNaN(mv)) g.sum += mv
+        metricVal = Number((o.values as Record<string, unknown>)[metricProp.key])
+        if (!Number.isNaN(metricVal)) g.sum += metricVal
+      }
+      if (cross) {
+        const cRaw = (o.values as Record<string, unknown>)[crossProp!.key]
+        const ck = crossProp!.type === 'date' || /date|time/i.test(crossProp!.key) ? bucketOf(normalizeDate(cRaw)) : String(cRaw ?? '未设置')
+        let row = cross.get(gv)
+        if (!row) { row = new Map(); cross.set(gv, row) }
+        const cell = row.get(ck) ?? { count: 0, sum: 0 }
+        cell.count++
+        if (!Number.isNaN(metricVal)) cell.sum += metricVal
+        row.set(ck, cell)
       }
     }
     for (const [, g] of groups) g.avg = g.count > 0 ? Math.round((g.sum / g.count) * 10) / 10 : 0
-    return { total: objs.length, groups: Array.from(groups.entries()).map(([name, v]) => ({ name, ...v })) }
+    return { total: objs.length, groups: Array.from(groups.entries()).map(([name, v]) => ({ name, ...v })), cross }
   }
 
   // 排序：时间序列（日期分组+分桶）默认按时间升序（趋势图友好），其余默认按 sum 降序（金额最大优先）
@@ -212,12 +229,43 @@ dashboardRoutes.get('/aggregate', (c) => {
   const sortKey = sort === 'count' ? 'count' : sort === 'avg' ? 'avg' : sort === 'name' ? 'name' : (!sort && isTimeSeries ? 'name' : 'sum')
   const direction = order === 'asc' ? 1 : order === 'desc' ? -1 : (!order && sortKey === 'name' ? 1 : -1)
 
-  const { total, groups } = aggregateRange(from, to)
+  const { total, groups, cross: crossMap } = aggregateRange(from, to)
   const sorted = groups.sort((a, b) => (sortKey === 'name' ? a.name.localeCompare(b.name) * direction : (a[sortKey] - b[sortKey]) * direction))
 
   // TOP-N：排序后截取前 N 组（1-50，非法值忽略）
   const topN = top ? Math.min(50, Math.max(1, parseInt(top, 10) || 0)) : 0
   const finalGroups = topN > 0 ? sorted.slice(0, topN) : sorted
+
+  // 二维交叉矩阵：行沿用排序/top 截取；列按列总和降序取前 12
+  let crossOut: {
+    rowBy: { key: string; name: string }
+    colBy: { key: string; name: string }
+    columns: string[]
+    rows: { name: string; rowCount: number; rowSum: number; cells: Record<string, { sum: number; count: number }> }[]
+    metric: 'sum' | 'count'
+  } | null = null
+  if (crossProp && crossMap) {
+    const colTotals = new Map<string, number>()
+    for (const [, row] of crossMap) {
+      for (const [ck, cell] of row) colTotals.set(ck, (colTotals.get(ck) ?? 0) + (metricProp ? cell.sum : cell.count))
+    }
+    const columns = Array.from(colTotals.entries()).sort((a, b) => b[1] - a[1]).slice(0, 12).map((e) => e[0])
+    crossOut = {
+      rowBy: { key: groupProp.key, name: groupProp.name },
+      colBy: { key: crossProp.key, name: crossProp.name },
+      columns,
+      rows: finalGroups.map((g) => ({
+        name: g.name,
+        rowCount: g.count,
+        rowSum: Math.round(g.sum * 100) / 100,
+        cells: Object.fromEntries(columns.map((col) => {
+          const cell = crossMap.get(g.name)?.get(col)
+          return [col, cell ? { sum: Math.round(cell.sum * 100) / 100, count: cell.count } : { sum: 0, count: 0 }]
+        })),
+      })),
+      metric: metricProp ? 'sum' : 'count',
+    }
+  }
 
   // 同比/环比：以 from/to 为当期窗口，向前推导对比窗口（prev=紧邻等长上期；yoy=去年同期）
   let compareBlock: {
@@ -264,8 +312,9 @@ dashboardRoutes.get('/aggregate', (c) => {
     groupBy: { key: groupProp.key, name: groupProp.name },
     metric: metricProp ? { key: metricProp.key, name: metricProp.name } : null,
     total,
-    applied: { bucket: bucket || null, from: from || null, to: to || null, sort: sortKey, order: direction === 1 ? 'asc' : 'desc', top: topN || null },
+    applied: { bucket: bucket || null, from: from || null, to: to || null, sort: sortKey, order: direction === 1 ? 'asc' : 'desc', top: topN || null, crossBy: crossProp?.key ?? null },
     compare: compareBlock,
+    cross: crossOut,
     groups: finalGroups,
   })
 })

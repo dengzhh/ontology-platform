@@ -105,8 +105,9 @@
 
 ### /api/dashboard  (dashboardRoutes)
   GET /overview
-  GET /aggregate  ?typeId&groupBy&metric?&bucket=day|week|month|quarter?&from?&to?&sort=sum|count|avg|name?&order?&top=N?&compare=prev|yoy?
+  GET /aggregate  ?typeId&groupBy&metric?&bucket=day|week|month|quarter?&from?&to?&sort=sum|count|avg|name?&order?&top=N?&compare=prev|yoy?&crossBy=第二维度?
     # 时间序列（日期分组+bucket）默认按时间升序；compare 需带 from/to（当期窗口），返回 compare{current,previous,delta,deltaPct}
+    # crossBy 返回二维交叉矩阵 cross{rowBy,colBy,columns(前12),rows[].cells,rowSum/rowCount}；与 compare 互斥（同用 400）
   GET /timeline
 
 ### /api/data-layer  (dataLayerRoutes)

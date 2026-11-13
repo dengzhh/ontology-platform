@@ -457,6 +457,17 @@ cleanData()
   const tpg = top.data?.groups ?? []
   const topOk = top.ok && tpg.length >= 1 && tpg.length <= 3 && Number(top.data?.applied?.top) === 3 && tpg.every((g, i) => i === 0 || tpg[i - 1].sum >= g.sum)
   summary.push({ label: 'ChatBI·TOP-N 截取(按金额降序)', ok: topOk, detail: `top=${tpg.length} 组` })
+
+  // ⑤ 二维交叉：订单 月份 × 状态 金额矩阵（单元格求和应等于行合计）
+  const cross = await api('GET', `/api/dashboard/aggregate?typeId=order&groupBy=date&metric=amount&bucket=month&crossBy=status&from=${iso(new Date(nowD.getFullYear(), nowD.getMonth() - 24, 1))}&to=${iso(mEnd)}`)
+  const cr = cross.data?.cross
+  const rowCheck = cr ? cr.rows.every((row) => Math.abs(cr.columns.reduce((s, c2) => s + (row.cells[c2]?.sum ?? 0), 0) - row.rowSum) < 0.01) : false
+  summary.push({ label: 'ChatBI·二维交叉矩阵(月×状态)', ok: cross.ok && !!cr && cr.rows.length >= 20 && cr.columns.includes('已完成') && rowCheck, detail: `${cr?.rows?.length} 行 × ${cr?.columns?.length} 列，单元格=行合计校验${rowCheck ? '通过' : '失败'}` })
+
+  // ⑥ 设备类型 × 状态交叉（seed 数据即可验证）
+  const cross2 = await api('GET', '/api/dashboard/aggregate?typeId=device&groupBy=type&crossBy=status')
+  const cr2 = cross2.data?.cross
+  summary.push({ label: 'ChatBI·设备类型×状态交叉', ok: cross2.ok && !!cr2 && cr2.rows.length >= 3 && cr2.columns.length >= 3, detail: `${cr2?.rows?.length} 行 × ${cr2?.columns?.length} 列` })
 }
 
 /* ---------------- 汇总 ---------------- */

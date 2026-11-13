@@ -9,7 +9,7 @@
 [![React](https://img.shields.io/badge/React_18-TypeScript-61dafb.svg)]()
 [![Hono](https://img.shields.io/badge/Hono-API_server-e36002.svg)]()
 [![SQLite](https://img.shields.io/badge/SQLite-Drizzle_ORM-003b57.svg)]()
-[![Tests](https://img.shields.io/badge/smoke-158/158_passing-2ea44f.svg)]()
+[![Tests](https://img.shields.io/badge/smoke-161/161_passing-2ea44f.svg)]()
 
 **42 个应用 · 全栈真实落库 · 一条命令启动 · 零外部依赖**
 
@@ -60,13 +60,15 @@ Contour 点击式探索：维度分组聚合真实对象，柱图/饼图/明细�
 
 ### 4 · AIP 助手：对话式操作平台（含 ChatBI）
 
-侧滑助手常驻全站，双引擎（LLM function-calling / 本地规则降级），**21 个工具**覆盖导航、对象查询、动作执行、知识检索、分组统计、函数/管道/排程、治理扫描、审批决策等；语义层守卫确保只按**认证过的业务口径**回答，无覆盖则明确拒答。
+侧滑助手常驻全站，双引擎（LLM function-calling / 本地规则降级），**22 个工具**覆盖导航、对象查询、动作执行、知识检索、分组统计、函数/管道/排程、治理扫描、审批决策等；语义层守卫确保只按**认证过的业务口径**回答，无覆盖则明确拒答。
 
-ChatBI 对话内出图并**自动选择图表形态**：时间趋势 → 折线图、枚举占比 → 饼图、排行 → 条形图；支持 **TOP-N**（"停机时长 TOP5 设备"）、**环比/同比**（自动推导对比窗口，给出本期/上期值与增减百分比），双引擎均可解析这些问法。
+ChatBI 对话内出图并**自动选择图表形态**：时间趋势 → 折线图、枚举占比 → 饼图、排行 → 条形图、二维交叉 → **热力矩阵**；支持 **TOP-N**（"停机时长 TOP5 设备"）、**环比/同比**（自动推导对比窗口，给出本期/上期值与增减百分比）、**多维交叉**（"各设备类型的状态分布"、"按月看各状态订单金额"），双引擎均可解析这些问法。问题模糊（如"统计一下"）或字段不存在时，助手会**主动反问澄清**并给出可点选项，点击即继续——不瞎猜口径。
 
-| ChatBI 分组聚合（条形图 + 工具卡片） | ChatBI 月度趋势（折线图） |
+| ChatBI 分组聚合（条形图） | ChatBI 月度趋势（折线图） |
 |---|---|
 | ![AIP 助手 ChatBI](docs/screenshots/aip-chatbi.png) | ![AIP 助手趋势](docs/screenshots/aip-chatbi-trend.png) |
+| **ChatBI 二维交叉（热力矩阵）** | |
+| ![AIP 交叉分析](docs/screenshots/aip-chatbi-cross.png) | |
 
 ### 5 · 治理闭环与实现进度
 
@@ -88,11 +90,11 @@ npm run dev              # 一条命令启动全栈：前端 http://localhost:51
 
 **默认账号**：`chen.xingye / ontos@2026`（平台管理员；另有维修工程师/计划员/审计员演示账号，登录页可一键填入）
 
-**可选：一键装载全功能验证数据**（幂等，81 项断言）
+**可选：一键装载全功能验证数据**（幂等，83 项断言）
 
 ```bash
 python demo-data/build_external_db.py   # 生成独立外部 SQLite 演示库（4 表 / 120 行）
-node demo-data/load.mjs                 # 期望：通过 81/81
+node demo-data/load.mjs                 # 期望：通过 83/83
 ```
 
 装载后按 `demo-data/FEATURE-MATRIX.md` 的 42 页验证矩阵逐页体验。清理验证数据：`node demo-data/load.mjs --clean`。
@@ -104,7 +106,7 @@ node demo-data/load.mjs                 # 期望：通过 81/81
 npm run build             # 前端类型检查 + 产物构建（dist/）
 npm run typecheck:server  # 服务端类型检查
 npm run preview           # 本地预览构建产物
-node tests/smoke.mjs      # 全站 API 黑盒冒烟（158 项断言，零依赖）
+node tests/smoke.mjs      # 全站 API 黑盒冒烟（161 项断言，零依赖）
 node demo-data/stress.mjs # 10 万行压力基准（灌入 726ms / 列表 0.3ms，自动清理）
 ```
 
@@ -188,8 +190,8 @@ tests/ · demo-data/            # 冒烟/契约/清单/E2E 剧本/扫描素材 �
 
 | 资产 | 规模 | 说明 |
 |---|---|---|
-| `tests/smoke.mjs` | **158 项断言全绿** | 零依赖黑盒：登录 → 60+ 读端点 → 写闭环 → 权限 → 外部源 → ChatBI → 函数沙箱 → 分页/批量 |
-| `demo-data/load.mjs` | **81 项幂等装载** | 一键生成验证全部功能的数据集（含外部库构建） |
+| `tests/smoke.mjs` | **161 项断言全绿** | 零依赖黑盒：登录 → 60+ 读端点 → 写闭环 → 权限 → 外部源 → ChatBI → 函数沙箱 → 分页/批量 |
+| `demo-data/load.mjs` | **83 项幂等装载** | 一键生成验证全部功能的数据集（含外部库构建） |
 | `demo-data/stress.mjs` | **10 万行基准** | 事务灌入 726ms、索引列表 0.3ms、count 5.4ms，自动清理 |
 | `demo-data/FEATURE-MATRIX.md` | 42 页矩阵 | 每页功能 ↔ 验证数据 ↔ 体验步骤 |
 | `tests/checklist.md` / `e2e-scenarios.md` | 40 页清单 / 10 剧本 | 人工验收与业务闭环走查 |
@@ -206,7 +208,7 @@ tests/ · demo-data/            # 冒烟/契约/清单/E2E 剧本/扫描素材 �
 
 ## 路线图
 
-- ✅ **v1.0.0（当前）**：42 应用全 live；AIP 助手 21 工具 + ChatBI；语义层；多空间；外部数据源；10 万行级性能验证
+- ✅ **v1.0.0（当前）**：42 应用全 live；AIP 助手 22 工具 + ChatBI（趋势/环比同比/TOP-N/交叉/主动澄清）；语义层；多空间；外部数据源；10 万行级性能验证
 - 🔜 计划中：PostgreSQL/pgvector 适配 · OIDC/SSO · 流式时序采集 · 更多数据连接器（PG/MySQL/Kafka）· 查询管道实时掩码 · 对象存储 V2
 
 ## 说明
