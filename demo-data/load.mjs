@@ -1,13 +1,16 @@
 /**
- * OntoOS 全功能验证数据集 · 一键装载
+ * OntoOS 全功能验证数据集 · 一键装载（真实业务命名）
  *
  * 用法（先 npm run dev 启动服务）：
  *   node demo-data/load.mjs            # 装载（幂等：重复运行不会产生重复数据）
- *   node demo-data/load.mjs --clean    # 仅清理本脚本产生的 DEMO_ 数据
+ *   node demo-data/load.mjs --clean    # 仅清理本脚本产生的数据
  *
- * 通过真实 HTTP API 装载（与用户操作路径一致）；无 API 的实体（通知/审批/术语认证等）
- * 用只读直连主库补充。所有数据统一 DEMO_ 前缀，便于识别与清理。
- * 覆盖模块：对象/本体/动作审批/知识/分析/应用/AIP/治理/管理/外部数据源/扫描。
+ * 场景：虚构企业「星辰智造集团」（珠三角注塑/CNC 制造，顺德/南海/禅城三大基地）。
+ * 所有数据使用真实业务命名（SO- 订单号 / GD- 工单号 / 真实公司名 / 真实规程标题），
+ * 不带演示前缀；清理依赖两重机制：
+ *   ① settings 表的 load_manifest（本脚本写入：对象 id / 各实体名称 / 指标名）
+ *   ② 静态名称清单 NAMES（与创建点共用，兜底清掉无 manifest 的历史装载）
+ * 另保留 DEMO_ 前缀兜底清理，用于一次性迁出旧版演示数据。
  */
 import fs from 'node:fs'
 import path from 'node:path'
@@ -16,12 +19,50 @@ import Database from 'better-sqlite3'
 const BASE = process.env.BASE_URL || 'http://localhost:5000'
 const ACCOUNT = process.env.ACCOUNT || 'chen.xingye'
 const PASSWORD = process.env.PASSWORD || 'ontos@2026'
-const TAG = 'DEMO_'
+const TAG = 'DEMO_' // 仅用于清理历史旧数据，新数据不再使用该前缀
 const CLEAN = process.argv.includes('--clean')
 const ROOT = path.resolve(process.cwd())
 const db = new Database(path.join(ROOT, 'data', 'ontoos.db'))
 const ORG = 'sp-org-default'
 const PERSONAL = 'sp-personal-U-0001'
+
+/** 本脚本创建的全部实体名称（装载与清理共用同一份清单） */
+const NAMES = {
+  objectTypes: ['供应商评估记录'],
+  linkTypes: ['评估记录关联工单'],
+  actionTypes: ['登记供应商档案'],
+  functions: ['设备OEE计算'],
+  interfaces: ['可估值资产契约'],
+  terms: ['设备资产总值'],
+  documents: ['注塑机液压系统维护规程', 'CNC 主轴保养手册', '设备点检作业指导书', '车间安全生产条例', '模具入库验收规范'],
+  automationRules: ['设备健康度低阈值告警'],
+  workshopApps: ['设备运维监控台'],
+  reports: ['2026年10月设备运营月报'],
+  pipelines: ['ERP备件库存同步'],
+  marketplace: ['连锁门店库存管理包'],
+  workflows: ['设备停机标准处置流程', '采购申请分级审批流程'],
+  conversations: ['设备运维助理', '设备巡检问答'],
+  cipherRules: ['客户手机号脱敏'],
+  lifecyclePolicies: ['操作日志180天保留'],
+  modelRegistrations: ['GLM-4-Flash对话模型'],
+  userGroups: ['华南区设备运维组'],
+  repoFiles: ['oeeCalculator.ts'],
+  scanTemplates: ['快递面单识别'],
+  connections: ['集团ERP备件库存库', '财务报销流水CSV', '设备台账导出JSON'],
+  explorations: ['健康度80+优秀设备清单'],
+  scenarios: ['Q4新增注塑机上线'],
+  scanFindingTables: ['crm_customers'],
+  metrics: ['health_daily'],
+  /** 对象 id 前缀（ChatBI 订单直插用真实单号前缀） */
+  objectIdPrefixes: ['order:SO-2'],
+  /** 对象 values 包含标记（用于清掉随机 id 的 API 创建对象） */
+  objectMarkers: ['F1-IM-210', 'F1-CN-210', 'F2-IM-210', 'F2-CN-210', 'F2-CN-220', 'F3-IM-3001', 'GD-2026-30', 'CU-080', 'SO-2026-27', '顺德注塑基地', '南海精密加工基地', '禅城装配基地', '东莞市瑞泰精密模具', '深圳市康诺电子科技', '惠州市联翔五金制品', '广州鹏程汽车零部件', '佛山恒力液压', '中山金鑫轴承', '东莞广泰密封件', '广州华顺电气'],
+  /** 个人空间消费标题（重复装载幂等清理） */
+  personalTitles: ['午餐', '地铁', '房租', '超市采购', '电影', '体检', '巡检便利店小票'],
+}
+/** 装载期动态收集的对象 id（写入 settings.load_manifest，供 --clean 精确清理） */
+const createdObjectIds = []
+const MANIFEST_KEY = 'load_manifest'
 
 let token = ''
 const summary = []
@@ -43,66 +84,125 @@ function ok(label, r, extra = '') { summary.push({ label, ok: r.ok, detail: r.ok
 function raw(sql, ...args) { return db.prepare(sql).all(...args) }
 function run(sql, ...args) { return db.prepare(sql).run(...args) }
 
-/* ---------------- 清理 ---------------- */
-function cleanData() {
-  const before = raw(`SELECT count(*) c FROM objects WHERE "values" LIKE ?`, `%${TAG}%`)[0].c
-  // 对象
-  const ids = raw(`SELECT id FROM objects WHERE "values" LIKE ?`, `%${TAG}%`).map((r) => r.id)
+/* ---------------- 清理（manifest 精确清理 + 静态名称清单 + 旧 DEMO_ 兜底） ---------------- */
+function readManifest() {
+  const row = raw('SELECT value FROM settings WHERE key = ?', MANIFEST_KEY)[0]
+  try { return row ? JSON.parse(String(row.value)) : {} } catch { return {} }
+}
+function writeManifest() {
+  const m = { objectIds: createdObjectIds, ...NAMES }
+  const existing = raw('SELECT key FROM settings WHERE key = ?', MANIFEST_KEY)[0]
+  if (existing) run('UPDATE settings SET value = ? WHERE key = ?', JSON.stringify(m), MANIFEST_KEY)
+  else run('INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)', MANIFEST_KEY, JSON.stringify(m), Date.now())
+}
+function deleteObjectsByIds(ids) {
   for (const id of ids) {
     run('DELETE FROM object_links WHERE source_id=? OR target_id=?', id, id)
     run('DELETE FROM doc_links WHERE object_id=?', id)
     run('DELETE FROM objects WHERE id=?', id)
   }
-  // 函数版本先按 DEMO_ 函数的 id 清理（版本表自身 name 无前缀，须在函数删除前查）
-  const demoFnIds = raw(`SELECT id FROM ontology_functions WHERE name LIKE ?`, `${TAG}%`).map((r) => r.id)
-  for (const fid of demoFnIds) { try { run('DELETE FROM function_versions WHERE function_id=?', fid) } catch { /* ignore */ } }
-  // 模块 3-6：真实时序点 / 治理执行记录 / 排程任务 / 部署记录（本脚本产生）
-  try { run(`DELETE FROM ts_points WHERE metric LIKE ?`, `${TAG}%`) } catch { /* ignore */ }
-  try { run(`DELETE FROM governance_runs`) } catch { /* ignore */ }
-  try { run(`DELETE FROM schedule_tasks`) } catch { /* ignore */ }
-  try { run(`DELETE FROM deployments WHERE message LIKE ?`, `${TAG}%`) } catch { /* ignore */ }
-  // 其它 DEMO_ 实体（注意顺序：先删引用方，再删被引用的类型/链接，避免外键约束阻止删除）
-  for (const [table, col] of [
-    ['documents', 'title'], ['approvals', 'title'], ['automation_rules', 'name'],
-    ['workshop_apps', 'name'], ['reports', 'title'], ['pipelines', 'name'],
-    ['interface_types', 'name'], ['ontology_terms', 'term'],
-    ['data_connections', 'name'], ['scan_templates', 'name'], ['cipher_rules', 'name'],
-    ['scan_findings', 'table_name'], ['lifecycle_policies', 'name'],
-    ['model_registrations', 'name'], ['api_keys', 'name'], ['marketplace_products', 'name'],
-    ['repo_files', 'path'], ['pipeline_runs', 'operator'],
-    ['ontology_functions', 'name'], ['action_types', 'name'], ['link_types', 'name'],
-    ['object_types', 'name'], ['notifications', 'title'],
-    // 第 3 批新表：函数版本按 functionId 关联、探索/派生/场景/治理/排程/部署按 name 或 target 清
-    ['saved_explorations', 'name'], ['derived_properties', 'name'], ['ontology_scenarios', 'name'],
-    ['governance_runs', 'target'], ['schedule_tasks', 'batch'], ['deployments', 'message'],
+}
+function cleanData() {
+  let removed = 0
+  // ① 按 manifest 精确清理（上一轮装载记录的对象 id）
+  const m = readManifest()
+  if (m.objectIds?.length) { removed += m.objectIds.length; deleteObjectsByIds(m.objectIds) }
+  // ② 按静态名称清单清理（覆盖无 manifest 的历史装载；名称固定所以可靠）
+  for (const [sql, args] of [
+    ['DELETE FROM objects WHERE type_id IN (SELECT id FROM object_types WHERE name IN (' + NAMES.objectTypes.map(() => '?').join(',') + '))', NAMES.objectTypes],
+    // ChatBI 订单 + 场景合并对象 + 组织/个人 API 创建对象（按 id 前缀与 values 标记）
+    ...NAMES.objectIdPrefixes.map((p) => ['DELETE FROM objects WHERE id LIKE ?', [p + '%']]),
+    ...NAMES.objectMarkers.map((mk) => ['DELETE FROM objects WHERE "values" LIKE ?', ['%' + mk + '%']]),
+    ...NAMES.personalTitles.map((t) => ['DELETE FROM objects WHERE "values" LIKE ?', ['%"title":"' + t + '"%']]),
+    ['DELETE FROM objects WHERE "values" LIKE ?', ['%巡检便利店小票%']],
+    // 各业务表按名称
+    ['DELETE FROM documents WHERE title IN (' + NAMES.documents.map(() => '?').join(',') + ')', NAMES.documents],
+    ['DELETE FROM automation_rules WHERE name IN (' + NAMES.automationRules.map(() => '?').join(',') + ')', NAMES.automationRules],
+    ['DELETE FROM workshop_apps WHERE name IN (' + NAMES.workshopApps.map(() => '?').join(',') + ')', NAMES.workshopApps],
+    ['DELETE FROM reports WHERE title IN (' + NAMES.reports.map(() => '?').join(',') + ')', NAMES.reports],
+    ['DELETE FROM pipelines WHERE name IN (' + NAMES.pipelines.map(() => '?').join(',') + ')', NAMES.pipelines],
+    ['DELETE FROM marketplace_products WHERE name IN (' + NAMES.marketplace.map(() => '?').join(',') + ')', NAMES.marketplace],
+    ['DELETE FROM interface_types WHERE name IN (' + NAMES.interfaces.map(() => '?').join(',') + ')', NAMES.interfaces],
+    ['DELETE FROM ontology_terms WHERE term IN (' + NAMES.terms.map(() => '?').join(',') + ')', NAMES.terms],
+    ['DELETE FROM data_connections WHERE name IN (' + NAMES.connections.map(() => '?').join(',') + ')', NAMES.connections],
+    ['DELETE FROM scan_templates WHERE name IN (' + NAMES.scanTemplates.map(() => '?').join(',') + ')', NAMES.scanTemplates],
+    ['DELETE FROM cipher_rules WHERE name IN (' + NAMES.cipherRules.map(() => '?').join(',') + ')', NAMES.cipherRules],
+    ['DELETE FROM lifecycle_policies WHERE name IN (' + NAMES.lifecyclePolicies.map(() => '?').join(',') + ')', NAMES.lifecyclePolicies],
+    ['DELETE FROM model_registrations WHERE name IN (' + NAMES.modelRegistrations.map(() => '?').join(',') + ')', NAMES.modelRegistrations],
+    ['DELETE FROM user_groups WHERE name IN (' + NAMES.userGroups.map(() => '?').join(',') + ')', NAMES.userGroups],
+    ['DELETE FROM repo_files WHERE path IN (' + NAMES.repoFiles.map(() => '?').join(',') + ')', NAMES.repoFiles],
+    ['DELETE FROM saved_explorations WHERE name IN (' + NAMES.explorations.map(() => '?').join(',') + ')', NAMES.explorations],
+    ['DELETE FROM ontology_scenarios WHERE name IN (' + NAMES.scenarios.map(() => '?').join(',') + ')', NAMES.scenarios],
+    ['DELETE FROM scan_findings WHERE table_name IN (' + NAMES.scanFindingTables.map(() => '?').join(',') + ')', NAMES.scanFindingTables],
+    ['DELETE FROM ai_conversations WHERE title IN (' + NAMES.conversations.map(() => '?').join(',') + ')', NAMES.conversations],
+    ['DELETE FROM ts_points WHERE metric IN (' + NAMES.metrics.map(() => '?').join(',') + ')', NAMES.metrics],
   ]) {
-    try { run(`DELETE FROM ${table} WHERE ${col} LIKE ?`, `${TAG}%`) } catch { /* 表/列不存在则跳过 */ }
+    try { run(sql, ...args) } catch (e) { /* 表/列不存在则跳过 */ }
   }
-  // 兜底：按 id 精确清掉 DEMO_ 类型的残留引用（链接/动作/函数可能以 sourceTypeId 引用它，name 不带前缀）
-  const demoTypeIds = raw(`SELECT id FROM object_types WHERE name LIKE ?`, `${TAG}%`).map((r) => r.id)
-  for (const tid of demoTypeIds) {
+  // 函数版本须在函数删除前按 function_id 清
+  const fnIds = raw('SELECT id FROM ontology_functions WHERE name IN (' + NAMES.functions.map(() => '?').join(',') + ')', ...NAMES.functions).map((r) => r.id)
+  for (const fid of fnIds) { try { run('DELETE FROM function_versions WHERE function_id=?', fid) } catch { /* ignore */ } }
+  run('DELETE FROM ontology_functions WHERE name IN (' + NAMES.functions.map(() => '?').join(',') + ')', ...NAMES.functions)
+  run('DELETE FROM action_types WHERE name IN (' + NAMES.actionTypes.map(() => '?').join(',') + ')', ...NAMES.actionTypes)
+  run('DELETE FROM link_types WHERE name IN (' + NAMES.linkTypes.map(() => '?').join(',') + ')', ...NAMES.linkTypes)
+  // 删除类型前先清其引用（链接/动作/对象/术语）
+  const typeIds = raw('SELECT id FROM object_types WHERE name IN (' + NAMES.objectTypes.map(() => '?').join(',') + ')', ...NAMES.objectTypes).map((r) => r.id)
+  for (const tid of typeIds) {
     try { run('DELETE FROM action_types WHERE target_type_id=?', tid) } catch { /* ignore */ }
     try { run('DELETE FROM link_types WHERE source_type_id=? OR target_type_id=?', tid, tid) } catch { /* ignore */ }
+    try { run('DELETE FROM ontology_terms WHERE type_id=?', tid) } catch { /* ignore */ }
     try { run('DELETE FROM objects WHERE type_id=?', tid) } catch { /* ignore */ }
     try { run('DELETE FROM object_types WHERE id=?', tid) } catch { /* ignore */ }
   }
-  run(`DELETE FROM audit_events WHERE target LIKE ? AND created_at > ?`, `${TAG}%`, Date.now() - 30 * 86400_000)
-  // AIP Logic 历史同名工作流去重（旧版每次装载都新建，界面下拉曾堆积 20+ 同名项）
+  // 工作流按名称从 settings 移除
   try {
     for (const row of raw(`SELECT key, value FROM settings WHERE key LIKE 'logic_workflows_%'`)) {
       const data = (() => { try { return JSON.parse(String(row.value)) } catch { return {} } })()
       const list = Array.isArray(data.workflows) ? data.workflows : []
+      const kept = list.filter((w) => !NAMES.workflows.includes(w.name) && !String(w.name ?? '').startsWith(TAG))
+      // 同名去重（旧版重复装载堆积）
       const seen = new Map()
-      for (const w of list) { if (w && w.name) seen.set(w.name, w) } // 同名保留最后一条
+      for (const w of kept) { if (w && w.name) seen.set(w.name, w) }
       const merged = Array.from(seen.values())
-      if (merged.length !== list.length) {
-        run('UPDATE settings SET value=? WHERE key=?', JSON.stringify({ workflows: merged }), row.key)
-        console.log(`  AIP Logic 工作流去重: ${list.length} → ${merged.length}`)
-      }
+      if (merged.length !== list.length) run('UPDATE settings SET value=? WHERE key=?', JSON.stringify({ workflows: merged }), row.key)
     }
-  } catch { /* 表不存在则跳过 */ }
-  console.log(`清理完成：DEMO_ 对象 ${before} 条及其它实体`)
-  return before
+  } catch { /* ignore */ }
+  // 模块 3-6 产生的执行类数据（全量清：治理执行/排程/部署为本脚本主要来源）
+  try { run('DELETE FROM governance_runs') } catch { /* ignore */ }
+  try { run('DELETE FROM schedule_tasks') } catch { /* ignore */ }
+  // ③ 旧版 DEMO_ 数据一次性兜底清理（历史迁移）
+  const demoIds = raw(`SELECT id FROM objects WHERE "values" LIKE ?`, `%${TAG}%`).map((r) => r.id)
+  deleteObjectsByIds(demoIds)
+  for (const fid of raw(`SELECT id FROM ontology_functions WHERE name LIKE ?`, `${TAG}%`).map((r) => r.id)) {
+    try { run('DELETE FROM function_versions WHERE function_id=?', fid) } catch { /* ignore */ }
+  }
+  try { run(`DELETE FROM ts_points WHERE metric LIKE ?`, `${TAG}%`) } catch { /* ignore */ }
+  try { run(`DELETE FROM ai_conversations WHERE title LIKE ?`, `${TAG}%`) } catch { /* ignore */ }
+  try { run(`DELETE FROM user_groups WHERE name LIKE ?`, `${TAG}%`) } catch { /* ignore */ }
+  // 文档删除前先删其分块/挂接（doc_chunks 外键引用 documents，直接删会被约束阻止并静默失败）
+  for (const docId of raw(`SELECT id FROM documents WHERE title LIKE ?`, `${TAG}%`).map((r) => r.id)) {
+    try { run('DELETE FROM doc_chunks WHERE doc_id=?', docId) } catch { /* ignore */ }
+    try { run('DELETE FROM doc_links WHERE doc_id=?', docId) } catch { /* ignore */ }
+    try { run('DELETE FROM documents WHERE id=?', docId) } catch { /* ignore */ }
+  }
+  for (const [table, col] of [
+    ['approvals', 'title'], ['automation_rules', 'name'],
+    ['workshop_apps', 'name'], ['reports', 'title'], ['pipelines', 'name'],
+    ['interface_types', 'name'], ['ontology_terms', 'term'],
+    ['data_connections', 'name'], ['scan_templates', 'name'], ['cipher_rules', 'name'],
+    ['scan_findings', 'table_name'], ['lifecycle_policies', 'name'],
+    ['model_registrations', 'name'], ['marketplace_products', 'name'],
+    ['repo_files', 'path'], ['ontology_functions', 'name'], ['action_types', 'name'], ['link_types', 'name'],
+    ['object_types', 'name'], ['notifications', 'title'],
+    ['saved_explorations', 'name'], ['ontology_scenarios', 'name'],
+  ]) {
+    try { run(`DELETE FROM ${table} WHERE ${col} LIKE ?`, `${TAG}%`) } catch { /* 表/列不存在则跳过 */ }
+  }
+  run(`DELETE FROM audit_events WHERE target LIKE ? AND created_at > ?`, `${TAG}%`, Date.now() - 30 * 86400_000)
+  // ④ 清掉 manifest 自身
+  run('DELETE FROM settings WHERE key = ?', MANIFEST_KEY)
+  console.log(`清理完成：manifest 对象 ${m.objectIds?.length ?? 0} 条 + 静态清单实体 + 旧 DEMO_ 兜底 ${demoIds.length} 条`)
+  return removed + demoIds.length
 }
 if (CLEAN) { cleanData(); db.close(); process.exit(0) }
 // 装载前先清理，保证幂等（重复运行不叠加）
@@ -118,40 +218,41 @@ cleanData()
 
 /* ---------------- 1. 本体建模（对象/链接/动作/函数/接口/术语） ---------------- */
 {
-  // 新建一个演示对象类型（带 4 种属性 + enum）
+  // 新建一个业务对象类型（带 4 种属性 + enum）
   const t = await api('POST', '/api/ontology/types', {
-    name: `${TAG}演示资产`, apiName: 'DemoAsset', desc: '全功能验证数据集专用类型',
+    name: `供应商评估记录`, apiName: 'SupplierAudit', desc: '供应商季度评估档案：得分、等级与评估日期',
     color: '#0ea5e9', icon: 'Boxes',
     properties: [
-      { key: 'title', name: '名称', type: 'string', required: true },
-      { key: 'value', name: '价值', type: 'number' },
-      { key: 'level', name: '等级', type: 'enum', enumValues: ['A', 'B', 'C'] },
-      { key: 'memo', name: '备注', type: 'string' },
+      { key: 'supplier', name: '供应商名称', type: 'string', required: true },
+      { key: 'score', name: '评估得分', type: 'number' },
+      { key: 'grade', name: '合作等级', type: 'enum', enumValues: ['A', 'B', 'C'] },
+      { key: 'date', name: '评估日期', type: 'date' },
     ],
   })
   // POST /ontology/types 返回 { type: {...} }；409（同名已存在）时复用已有类型，保证幂等
   let typeId = t.data?.type?.id
   if (!t.ok && t.status === 409) {
     const list = (await api('GET', '/api/ontology/types')).data?.types ?? []
-    typeId = list.find((x) => x.name === `${TAG}演示资产`)?.id
+    typeId = list.find((x) => x.name === `供应商评估记录`)?.id
   }
+  globalThis.__supplierTypeId = typeId
   ok('本体·新建/复用对象类型', { ok: !!typeId, status: t.status, data: t.data }, typeId || '')
 
   // 链接类型 + 动作类型 + 函数 + 接口
   ok('本体·新建链接类型', await api('POST', '/api/ontology/links', {
-    name: `${TAG}资产关联工单`, sourceTypeId: typeId || 'device', targetTypeId: 'ticket', cardinality: '1:N', desc: '演示链接',
+    name: `评估记录关联工单`, sourceTypeId: typeId || 'device', targetTypeId: 'ticket', cardinality: '1:N', desc: '供应商季度评估关联其产生的维修工单',
   }))
   ok('本体·新建动作类型', await api('POST', '/api/ontology/actions', {
-    name: `${TAG}登记资产`, targetTypeId: typeId || 'device', needsApproval: false, desc: '演示动作',
+    name: `登记供应商档案`, targetTypeId: typeId || 'device', needsApproval: false, desc: '录入新的供应商评估档案',
     params: [{ key: 'objectId', name: '目标对象', type: 'string', required: true }, { key: 'comment', name: '说明', type: 'string' }],
     effect: { kind: 'update', setValues: {} },
   }))
   ok('本体·新建函数', await api('POST', '/api/ontology/functions', {
-    name: `${TAG}演示计算`, desc: '演示用函数登记', lang: 'TypeScript', linkedTypeIds: [typeId || 'device'],
+    name: `设备OEE计算`, desc: '按可用率×性能率×合格率计算设备综合效率', lang: 'TypeScript', linkedTypeIds: [typeId || 'device'],
   }))
   const iface = await api('POST', '/api/ontology/interfaces', {
-    name: `${TAG}可估值资产`, desc: '演示接口契约',
-    properties: [{ key: 'title', name: '名称', type: 'string' }, { key: 'value', name: '价值', type: 'number' }],
+    name: `可估值资产契约`, desc: '可估值资产需实现的属性契约',
+    properties: [{ key: 'supplier', name: '供应商名称', type: 'string' }, { key: 'score', name: '评估得分', type: 'number' }],
     implementedBy: [typeId || 'device'],
   })
   ok('本体·新建接口', iface, iface.data?.id || '')
@@ -159,30 +260,65 @@ cleanData()
 
   // 业务术语（同义词 + 认证指标）
   const term = await api('POST', '/api/ontology/terms', {
-    term: `${TAG}资产总值`, synonyms: [`${TAG}资产总额`, `${TAG}家底`],
-    typeId: typeId || 'device', propertyKey: 'value',
-    definition: '演示资产的价值合计', metricExpr: 'SUM(DemoAsset.value)', certified: true,
+    term: `设备资产总值`, synonyms: [`设备总原值`, `固定资产总值`],
+    typeId: typeId || 'device', propertyKey: 'score',
+    definition: '集团在册设备的资产原值合计', metricExpr: 'AVG(score)', certified: true,
   })
   ok('语义层·认证术语', term, term.data?.id || '')
-  ok('语义层·解析预检', await api('GET', `/api/ontology/terms/resolve?q=${encodeURIComponent(TAG + '家底')}`))
+  ok('语义层·解析预检', await api('GET', `/api/ontology/terms/resolve?q=${encodeURIComponent('固定资产总值')}`))
 }
 
-/* ---------------- 2. 对象数据（每个主要类型补几行 DEMO_ 数据） ---------------- */
+/* ---------------- 2. 对象数据（真实业务实例：设备/工单/客户/订单/工厂） ---------------- */
 {
   const types = (await api('GET', '/api/ontology/types')).data?.types ?? []
-  const plan = [
-    ['device', (i) => ({ code: `${TAG}EQ-${i}`, name: `${TAG}设备 ${i}`, type: '注塑机', health: 50 + i * 7, status: i % 2 ? '运行' : '停机', downtime: i * 3.5, factory: '佛山 F2' })],
-    ['ticket', (i) => ({ no: `${TAG}GD-${3000 + i}`, device: `${TAG}EQ-1`, priority: ['P0', 'P1', 'P2'][i % 3], fault: '演示故障', status: ['待派单', '处理中', '已关闭'][i % 3], owner: '李维修', hours: i * 2 })],
-    ['customer', (i) => ({ code: `${TAG}CU-${i}`, name: `${TAG}客户 ${i}`, industry: ['汽车', '医疗器械', '新能源'][i % 3], grade: '优选', contact: '陈星野', phone: '138****0000' })],
-    ['order', (i) => ({ no: `${TAG}SO-${2700 + i}`, customer: `${TAG}客户 1`, amount: 10000 * (i + 1), status: '已付款', date: `2026-11-0${(i % 9) + 1}`, owner: '周计划' })],
-    ['factory', (i) => ({ code: `${TAG}F${i}`, name: `${TAG}工厂 ${i}`, city: '广东·佛山', devices: 100 + i * 10, oee: `${80 + i}%` })],
+  const DEVICE_NAMES = ['海天 MA1600 注塑机', '震雄 SM280 注塑机', '发那科 ROBODRILL CNC', '兄弟 TD-4C 钻攻中心', '基恩士 CV-X 检测仪', '汇川 AGV-200 搬运机器人']
+  const FAULTS = ['液压油温过高报警', '主轴异响，疑似轴承磨损', '机械手卡滞，复位异常', '导轨润滑不足报警', '视觉镜头标定偏移', '伺服驱动器过载跳闸']
+  const CUSTOMERS = [
+    ['CU-0801', '东莞市瑞泰精密模具有限公司', '模具加工'],
+    ['CU-0802', '深圳市康诺电子科技有限公司', '消费电子'],
+    ['CU-0803', '惠州市联翔五金制品有限公司', '五金制品'],
+    ['CU-0804', '广州鹏程汽车零部件有限公司', '汽车零部件'],
   ]
+  const ORDERS = [
+    ['SO-2026-2701', 'CU-0801', 286000, '已付款', '2026-11-02'],
+    ['SO-2026-2702', 'CU-0802', 158000, '已审批', '2026-11-05'],
+    ['SO-2026-2703', 'CU-0803', 92000, '生产中', '2026-11-08'],
+    ['SO-2026-2704', 'CU-0804', 520000, '已付款', '2026-11-10'],
+  ]
+  const FACTORIES = [
+    ['F1', '顺德注塑基地', '广东·顺德', 128, '86%'],
+    ['F2', '南海精密加工基地', '广东·南海', 96, '82%'],
+    ['F3', '禅城装配基地', '广东·禅城', 64, '91%'],
+    ['F4', '江门注塑分厂', '广东·江门', 42, '78%'],
+  ]
+  const plan = [
+    ['device', (i) => ({ code: `F${Math.ceil(i / 2)}-${i % 2 ? 'IM' : 'CN'}-21${String(i).padStart(2, '0')}`, name: DEVICE_NAMES[i - 1], type: i <= 2 ? '注塑机' : i === 3 || i === 4 ? 'CNC' : i === 5 ? '检测仪' : 'AGV', health: 95 - i * 4, status: i % 2 ? '运行' : i === 4 ? '维修' : '待机', downtime: i * 3.5, factory: FACTORIES[Math.ceil(i / 2) - 1]?.[1] ?? '顺德注塑基地' })],
+    ['ticket', (i) => ({ no: `GD-2026-${3000 + i}`, device: `F1-IM-2101`, priority: ['P1', 'P2', 'P0'][i % 3], fault: FAULTS[i - 1], status: ['待派单', '处理中', '已关闭'][i % 3], owner: '李维修', hours: i * 2.5 })],
+    ['customer', (i) => ({ code: CUSTOMERS[i - 1]?.[0] ?? `CU-08${String(i).padStart(2, '0')}`, name: CUSTOMERS[i - 1]?.[1] ?? `客户 ${i}`, industry: CUSTOMERS[i - 1]?.[2] ?? '机械制造', grade: i === 4 ? '战略' : '优选', contact: '陈星野', phone: '138****0000' })],
+    ['order', (i) => { const o = ORDERS[i - 1]; return { no: o[0], customer: CUSTOMERS.find((c) => c[0] === o[1])?.[1] ?? o[1], amount: o[2], status: o[3], date: o[4], owner: '周计划' } }],
+    ['factory', (i) => { const f = FACTORIES[i - 1]; return { code: f[0], name: f[1], city: f[2], devices: f[3], oee: f[4] } }],
+  ]
+  // 供应商评估记录实例（新类型；真实供应商与得分）
+  const SUPPLIERS = [
+    ['佛山恒力液压科技有限公司', 92, 'A'],
+    ['中山金鑫轴承制造有限公司', 85, 'A'],
+    ['东莞广泰密封件有限公司', 74, 'B'],
+    ['广州华顺电气设备有限公司', 61, 'C'],
+  ]
+  const supplierTid = globalThis.__supplierTypeId
+  if (supplierTid) {
+    for (let i = 1; i <= 4; i++) {
+      const [name, score, grade] = SUPPLIERS[i - 1]
+      const r = await api('POST', '/api/objects', { typeId: supplierTid, values: { supplier: name, score, grade, date: '2026-10-15' } })
+      if (r.ok) createdObjectIds.push(r.data?.object?.id ?? r.data?.id)
+    }
+  }
   let created = 0
   for (const [tid, gen] of plan) {
     if (!types.some((t) => t.id === tid)) continue
     for (let i = 1; i <= 4; i++) {
       const r = await api('POST', '/api/objects', { typeId: tid, values: gen(i) })
-      if (r.ok) created++
+      if (r.ok) { created++; createdObjectIds.push(r.data?.object?.id ?? r.data?.id) }
     }
   }
   ok('对象数据·批量实例', { ok: created >= 15 }, `新增 ${created} 个实例`)
@@ -198,15 +334,15 @@ cleanData()
   ]
   let pc = 0
   for (const [title, amount, date, category, merchant, payment] of expenses) {
-    const r = await api('POST', '/api/objects', { typeId: 'expense', values: { title: `${TAG}${title}`, amount, date, category, merchant, payment } }, PERSONAL)
-    if (r.ok) pc++
+    const r = await api('POST', '/api/objects', { typeId: 'expense', values: { title, amount, date, category, merchant, payment } }, PERSONAL)
+    if (r.ok) { pc++; createdObjectIds.push(r.data?.object?.id ?? r.data?.id) }
   }
   ok('个人空间·消费数据', { ok: pc === 6 }, `${pc} 条`)
   // 消费明细（expense_item）+ 链接
   const items = await api('POST', '/api/scan/commit', {
     typeId: 'expense',
-    values: { title: `${TAG}扫描小票`, amount: 40, date: '2026-11-08', category: '餐饮', merchant: '星辰便利店', payment: '微信',
-      items: [{ name: `${TAG}可乐`, qty: 2, unitPrice: 6, amount: 12, category: '餐饮' }, { name: `${TAG}盒饭`, qty: 1, unitPrice: 28, amount: 28, category: '餐饮' }] },
+    values: { title: `巡检便利店小票`, amount: 40, date: '2026-11-08', category: '餐饮', merchant: '星辰便利店', payment: '微信',
+      items: [{ name: `冰红茶`, qty: 2, unitPrice: 6, amount: 12, category: '餐饮' }, { name: `招牌鸡腿饭`, qty: 1, unitPrice: 28, amount: 28, category: '餐饮' }] },
     itemTypeId: 'expense_item',
   }, PERSONAL)
   ok('扫描·明细落地', items, `itemCount=${items.data?.itemCount}`)
@@ -219,32 +355,41 @@ cleanData()
   const target = (await api('GET', '/api/objects?type=device&limit=1')).data?.objects?.[0]
   const need = acts.find((a) => a.needsApproval)
   if (need && target) {
-    const ex = await api('POST', `/api/actions/${encodeURIComponent(need.id)}/execute`, { params: { objectId: target.id, comment: `${TAG}演示审批` } })
+    const ex = await api('POST', `/api/actions/${encodeURIComponent(need.id)}/execute`, { params: { objectId: target.id, comment: `设备F1-IM-2103检修申请` } })
     ok('动作·发起需审批动作', ex, ex.data?.status || '')
     if (ex.data?.approvalId) {
-      const d = await api('POST', `/api/actions/approvals/${encodeURIComponent(ex.data.approvalId)}/decide`, { decision: 'approve', comment: `${TAG}通过` })
+      const d = await api('POST', `/api/actions/approvals/${encodeURIComponent(ex.data.approvalId)}/decide`, { decision: 'approve', comment: `同意检修` })
       ok('审批·通过并写回', d, d.data?.status || '')
     }
   } else ok('动作·发起需审批动作', { ok: false, status: 0, data: { error: '无可用需审批动作或目标对象' } })
   ok('审计·留痕可查', await api('GET', '/api/admin/audit?limit=5'))
 }
 
-/* ---------------- 4. 知识层（文档入库 / 检索 / 抽取候选） ---------------- */
+/* ---------------- 4. 知识层（5 篇真实规程入库 / 检索 / 抽取候选） ---------------- */
 {
-  const d = await api('POST', '/api/knowledge/docs', {
-    title: `${TAG}设备维护手册`, category: '设备手册', format: 'TXT',
-    content: '注塑机 F2-IM-2041 的液压系统每 2000 小时需更换油封 HS-2041-03；油温超过 55 摄氏度时必须检查冷却系统。维修工单 GD-2291 记录了该设备的液压泄漏处置流程，责任人是李维修。',
-  })
-  ok('知识·文档入库分块', d, `chunks=${d.data?.chunks} mode=${d.data?.mode}`)
-  ok('知识·混合检索', await api('GET', `/api/knowledge/search?q=${encodeURIComponent('液压系统')}`))
+  const DOCS = [
+    ['注塑机液压系统维护规程', '设备手册', '注塑机 F2-IM-2041 的液压系统每 2000 小时需更换油封 HS-2041-03；油温超过 55 摄氏度时必须检查冷却系统。维修工单 GD-2291 记录了该设备的液压泄漏处置流程，责任人是李维修。'],
+    ['CNC 主轴保养手册', '设备手册', '发那科 ROBODRILL CNC 主轴每 3000 小时做一次精度校准；主轴异响时应停机检查轴承磨损，备件型号 BT30-6804。点检记录由当班机长签字确认，异常项须在 4 小时内报修。'],
+    ['设备点检作业指导书', '作业指导', '每日班前按点检表执行：油位、气压（0.6-0.8MPa）、安全门联锁、急停按钮。点检数据录入系统后自动同步至设备健康度指标；连续两次未点检的设备自动生成提醒通知给车间主任。'],
+    ['车间安全生产条例', '安全制度', '进入车间必须佩戴安全帽与防砸鞋；检修设备前须挂牌上锁（LOTO）并断开主电源。危险作业（动火、受限空间、高处）须提前一天在平台提交审批单，经安全主管批准后方可施工。'],
+    ['模具入库验收规范', '质量规范', '新模具入库前由质检科按《模具验收细则》检查：型腔尺寸公差 ±0.02mm、顶针配合、冷却水路保压 30 分钟无泄漏。验收合格的模具贴绿色标签并登记台账，不合格的退回供应商并在评估记录中扣分。'],
+  ]
+  let dc = 0
+  for (const [title, category, content] of DOCS) {
+    const r = await api('POST', '/api/knowledge/docs', { title, category, format: 'TXT', content })
+    if (r.ok) dc++
+  }
+  ok('知识·5 篇规程入库分块', { ok: dc === 5 }, `${dc}/5 篇`)
+  ok('知识·混合检索（液压）', await api('GET', `/api/knowledge/search?q=${encodeURIComponent('液压系统')}`))
+  ok('知识·混合检索（点检）', await api('GET', `/api/knowledge/search?q=${encodeURIComponent('点检要求')}`))
   ok('知识·抽取候选', await api('GET', '/api/extract/candidates'))
 }
 
 /* ---------------- 5. 自动化 / 通知 ---------------- */
 {
   const r = await api('POST', '/api/automations/rules', {
-    name: `${TAG}设备健康度告警`, trigger: { kind: 'threshold', typeId: 'device', field: 'health', op: '<', value: 60 },
-    condition: '健康度 < 60', actions: [{ kind: 'notify', config: { message: `${TAG}健康度低于阈值` } }],
+    name: `设备健康度低阈值告警`, trigger: { kind: 'threshold', typeId: 'device', field: 'health', op: '<', value: 60 },
+    condition: '健康度 < 60', actions: [{ kind: 'notify', config: { message: `设备健康度低于60，请安排检修` } }],
   })
   ok('自动化·规则（含条件表达式）', r, r.data?.id || '')
   ok('通知中心·真实列表', await api('GET', '/api/automations/notifications'))
@@ -252,18 +397,18 @@ cleanData()
 
 /* ---------------- 6. 应用：Workshop / 报告 / 管道 / 市场 ---------------- */
 {
-  const w = await api('POST', '/api/workshop', { name: `${TAG}演示看板`, desc: '全功能验证', widgets: [{ id: 'w1', type: 'stat', config: { typeId: 'device', title: '设备数', aggregation: 'count' } }] })
+  const w = await api('POST', '/api/workshop', { name: `设备运维监控台`, desc: '设备健康度与停机时长日常监控', widgets: [{ id: 'w1', type: 'stat', config: { typeId: 'device', title: '设备数', aggregation: 'count' } }] })
   ok('Workshop·应用与组件绑定', w, w.data?.id || '')
-  const rep = await api('POST', '/api/p10/notepad/reports', { title: `${TAG}运营月报`, content: '本月设备运行平稳，注塑机 F2-IM-2041 完成液压系统检修，累计停机 47.5 小时，已生成维修工单并闭环。', status: 'published' })
+  const rep = await api('POST', '/api/p10/notepad/reports', { title: `2026年10月设备运营月报`, content: '本月设备运行平稳，注塑机 F2-IM-2041 完成液压系统检修，累计停机 47.5 小时，已生成维修工单并闭环。', status: 'published' })
   ok('Notepad·发布报告', rep, rep.data?.status || '')
-  const pl = await api('POST', '/api/p10plus/pipelines', { name: `${TAG}演示管道`, nodes: [{ id: 'n1', type: 'source', config: {} }, { id: 'n2', type: 'output', config: {} }] })
+  const pl = await api('POST', '/api/p10plus/pipelines', { name: `ERP备件库存同步`, nodes: [{ id: 'n1', type: 'source', config: {} }, { id: 'n2', type: 'output', config: {} }] })
   ok('管道·新建', pl, pl.data?.id || '')
   if (pl.data?.id) {
     ok('管道·校验', await api('POST', `/api/p10plus/pipelines/${pl.data.id}/validate`))
     ok('管道·发布', await api('POST', `/api/p10plus/pipelines/${pl.data.id}/publish`))
     ok('管道·运行', await api('POST', `/api/p10plus/pipelines/${pl.data.id}/run`))
   }
-  ok('Marketplace·上架产品', await api('POST', '/api/p10plus/marketplace/products', { name: `${TAG}演示模板包`, category: '模板包', version: '1.0.0' }))
+  ok('Marketplace·上架产品', await api('POST', '/api/p10plus/marketplace/products', { name: `连锁门店库存管理包`, category: '模板包', version: '1.0.0' }))
 }
 
 /* ---------------- 7. AIP：Logic 工作流 / Agent / 会话 ---------------- */
@@ -275,7 +420,7 @@ cleanData()
     { id: 's3', type: 'condition', label: '置信度判断', condition: '置信度 > 0.8', x: 500, y: 60 },
     { id: 's4', type: 'output', label: '输出结果', outputFormat: '结构化 JSON', x: 730, y: 60 },
   ]
-  const wf1 = await api('POST', '/api/logic/workflows', { name: `${TAG}线性分析工作流`, steps: linearSteps })
+  const wf1 = await api('POST', '/api/logic/workflows', { name: `设备停机标准处置流程`, steps: linearSteps })
   ok('AIP Logic·线性工作流持久化', wf1, wf1.data?.id || '')
 
   // 工作流 2：条件分支双出口（nextYes / nextNo 指向不同节点，画布自动画两条着色连线）
@@ -285,20 +430,20 @@ cleanData()
     { id: 's3', type: 'output', label: '自动归档', outputFormat: '正常设备清单', x: 540, y: 20 },
     { id: 's4', type: 'output', label: '人工复核', outputFormat: '待复核工单', x: 540, y: 150 },
   ]
-  const wf2 = await api('POST', '/api/logic/workflows', { name: `${TAG}分支复核工作流`, steps: branchSteps })
+  const wf2 = await api('POST', '/api/logic/workflows', { name: `采购申请分级审批流程`, steps: branchSteps })
   ok('AIP Logic·分支工作流持久化(含 nextYes/nextNo)', wf2, wf2.data?.id || '')
 
   // 幂等校验：重复 POST 同名工作流不新增（后端按同名合并）
   const before = (await api('GET', '/api/logic/workflows')).data?.workflows ?? []
-  await api('POST', '/api/logic/workflows', { name: `${TAG}分支复核工作流`, steps: branchSteps })
+  await api('POST', '/api/logic/workflows', { name: `采购申请分级审批流程`, steps: branchSteps })
   const after = (await api('GET', '/api/logic/workflows')).data?.workflows ?? []
-  const nameCount = after.filter((w) => w.name === `${TAG}分支复核工作流`).length
+  const nameCount = after.filter((w) => w.name === `采购申请分级审批流程`).length
   const idempotent = wf2.ok && before.length === after.length && nameCount === 1
   ok('AIP Logic·同名装载幂等(不叠加)', { ok: idempotent, status: idempotent ? 200 : 500, data: {} }, `before=${before.length} after=${after.length} 同名=${nameCount}`)
 
   // 保存校验：空节点 / 分支目标不存在 → 400
-  ok('AIP Logic·空节点保存被拒(400)', await api('POST', '/api/logic/workflows', { name: `${TAG}非法工作流`, steps: [] }, ORG, 400))
-  ok('AIP Logic·分支目标不存在被拒(400)', await api('POST', '/api/logic/workflows', { name: `${TAG}非法工作流`, steps: [{ id: 's1', type: 'condition', label: '条件', condition: 'x > 1', nextYes: 'NO_SUCH_NODE' }] }, ORG, 400))
+  ok('AIP Logic·空节点保存被拒(400)', await api('POST', '/api/logic/workflows', { name: `测试非法流程`, steps: [] }, ORG, 400))
+  ok('AIP Logic·分支目标不存在被拒(400)', await api('POST', '/api/logic/workflows', { name: `测试非法流程`, steps: [{ id: 's1', type: 'condition', label: '条件', condition: 'x > 1', nextYes: 'NO_SUCH_NODE' }] }, ORG, 400))
 
   // 分支执行：健康度 62 > 60 → 走「自动归档」（结果里出现该节点，不出现人工复核）
   if (wf2.data?.id) {
@@ -325,26 +470,26 @@ cleanData()
     ok(`AIP Logic·预设直接运行「${pc.id}」`, { ok: okRun, status: okRun ? 200 : run.status, data: run.data }, stepsRun.join('→'))
   }
 
-  const ag = await api('POST', '/api/aip/agents', { name: `${TAG}演示助手`, desc: '全功能验证 Agent', tools: ['ontology_overview', 'query_objects'], guardrail: { maskSensitive: true, requireApprovalForActions: true } })
+  const ag = await api('POST', '/api/aip/agents', { name: `设备运维助理`, desc: '面向设备运维的智能问答与工具助手', tools: ['ontology_overview', 'query_objects'], guardrail: { maskSensitive: true, requireApprovalForActions: true } })
   ok('Agent Studio·新建 Agent', ag, ag.data?.id || '')
-  ok('AIP·助手会话', await api('POST', '/api/ai/conversations', { title: `${TAG}演示会话` }))
+  ok('AIP·助手会话', await api('POST', '/api/ai/conversations', { title: `设备巡检问答` }))
 }
 
 /* ---------------- 8. 治理 / 管理 ---------------- */
 {
-  ok('治理·脱敏规则', await api('POST', '/api/gov/cipher-rules', { name: `${TAG}手机号掩码`, pattern: '1[3-9]\\d{9}', action: '掩码' }))
-  ok('治理·扫描发现', await api('POST', '/api/gov/scan-findings', { table: `${TAG}_mock_table`, field: 'phone', sensitiveType: '手机号' }))
-  ok('治理·生命周期策略', await api('POST', '/api/gov/lifecycle-policies', { name: `${TAG}日志保留`, retention: '180 天', legal: '合规要求' }))
-  ok('模型·多模型注册', await api('POST', '/api/gov/models', { name: `${TAG}演示模型`, type: '对话', quota: 10000 }))
-  ok('用户组·新建', await api('POST', '/api/roles/groups', { name: `${TAG}演示组`, desc: '全功能验证' }))
-  ok('代码资产·登记', await api('POST', '/api/data-layer/repo', { path: `${TAG}demo.ts`, lang: 'typescript', content: 'export const demo = 1', branch: 'main' }))
-  ok('识别模板·自定义', await api('POST', '/api/scan/templates', { name: `${TAG}演示模板`, fieldMapping: { 合计: 'amount' }, matchKeywords: ['演示'] }))
+  ok('治理·脱敏规则', await api('POST', '/api/gov/cipher-rules', { name: `客户手机号脱敏`, pattern: '1[3-9]\\d{9}', action: '掩码' }))
+  ok('治理·扫描发现', await api('POST', '/api/gov/scan-findings', { table: `crm_customers`, field: 'phone', sensitiveType: '手机号' }))
+  ok('治理·生命周期策略', await api('POST', '/api/gov/lifecycle-policies', { name: `操作日志180天保留`, retention: '180 天', legal: '合规要求' }))
+  ok('模型·多模型注册', await api('POST', '/api/gov/models', { name: `GLM-4-Flash对话模型`, type: '对话', quota: 10000 }))
+  ok('用户组·新建', await api('POST', '/api/roles/groups', { name: `华南区设备运维组`, desc: '设备健康度与停机时长日常监控' }))
+  ok('代码资产·登记', await api('POST', '/api/data-layer/repo', { path: `oeeCalculator.ts`, lang: 'typescript', content: 'export function computeOee(a, p, q) { return a * p * q }', branch: 'main' }))
+  ok('识别模板·自定义', await api('POST', '/api/scan/templates', { name: `快递面单识别`, fieldMapping: { 合计: 'amount' }, matchKeywords: ['快递','运单','顺丰'] }))
 }
 
 /* ---------------- 9. 外部数据源（真实连接 + 同步） ---------------- */
 {
   const c = await api('POST', '/api/data-layer/connections', {
-    name: `${TAG}外部企业库`, type: 'SQLite', database: 'demo-data/external/enterprise.db',
+    name: `集团ERP备件库存库`, type: 'SQLite', database: 'demo-data/external/enterprise.db',
   })
   ok('外部数据源·登记连接', c, c.data?.id || '')
   if (c.data?.id) {
@@ -366,20 +511,20 @@ cleanData()
 
 /* ---------------- 11. 本体函数可执行化（模块1） ---------------- */
 {
-  // 复用第 1 节已建的 DEMO_ 函数（slug 同名会 409，不再新建），走完整版本闭环
+  // 复用第 1 节已建的「设备OEE计算」函数（同名会 409，不再新建），走完整版本闭环
   const fnList = (await api('GET', '/api/ontology/functions')).data?.functions ?? []
-  const fn = fnList.find((f) => f.name?.startsWith(TAG))?.id
+  const fn = fnList.find((f) => f.name === '设备OEE计算')?.id
   if (fn) {
-    const body = 'function main(input) { return { sum: (input.a || 0) + (input.b || 0), label: "DEMO_OK" } }'
-    const v = await api('POST', `/api/fn/functions/${fn}/versions`, { body, testInput: { a: 3, b: 4 } })
+    const body = 'function main(input) { return { oee: Math.round(((input.availability || 0) * (input.performance || 0) * (input.quality || 0)) * 1000) / 10, grade: (input.availability || 0) * (input.performance || 0) * (input.quality || 0) >= 0.85 ? "优秀" : "待改进" } }'
+    const v = await api('POST', `/api/fn/functions/${fn}/versions`, { body, testInput: { availability: 0.9, performance: 0.95, quality: 0.98 } })
     ok('函数·新建版本（自动测试）', v, v.data?.version?.version ? `v${v.data.version.version} testOutput=${String(v.data.version.testOutput).slice(0, 60)}` : '')
     const vers = await api('GET', `/api/fn/functions/${fn}/versions`)
     const v1 = (vers.data?.versions ?? [])[0]
     if (v1) {
       ok('函数·版本列表', vers, `${vers.data.versions.length} 个版本`)
       ok('函数·发布版本', await api('POST', `/api/fn/functions/${fn}/versions/${v1.id}/publish`))
-      const run = await api('POST', `/api/fn/functions/${fn}/run`, { input: { a: 10, b: 20 } })
-      ok('函数·沙箱真实执行 run', { ok: run.ok && run.data?.ok === true && run.data?.result?.sum === 30 }, `sum=${run.data?.result?.sum} dur=${run.data?.durationMs}ms`)
+      const run = await api('POST', `/api/fn/functions/${fn}/run`, { input: { availability: 0.9, performance: 0.95, quality: 0.98 } })
+      ok('函数·沙箱真实执行 run', { ok: run.ok && run.data?.ok === true && run.data?.result?.oee === 83.8 }, `oee=${run.data?.result?.oee} dur=${run.data?.durationMs}ms`)
     } else ok('函数·版本列表', { ok: false, status: 0, data: {} }, '未取到版本')
   } else ok('函数·新建', { ok: false, status: 0, data: {} }, '未取到函数 id')
 }
@@ -387,7 +532,7 @@ cleanData()
 /* ---------------- 12. Object Explorer 高级（模块2） ---------------- */
 {
   const EX = '/api/explorations/explorations'   // 前端/后端约定的 prefixed 路径
-  const exp = await api('POST', EX, { name: `${TAG}高价值设备探索`, typeId: 'device', filters: [{ key: 'health', op: 'gt', value: '80' }], sort: 'health' })
+  const exp = await api('POST', EX, { name: `健康度80+优秀设备清单`, typeId: 'device', filters: [{ key: 'health', op: 'gt', value: '80' }], sort: 'health' })
   ok('探索·新建保存的探索', exp, exp.data?.exploration?.id || '')
   if (exp.data?.exploration?.id) {
     ok('探索·运行真实过滤', await api('POST', `${EX}/${exp.data.exploration.id}/run`))
@@ -402,11 +547,11 @@ cleanData()
   ok('探索·新建派生属性', dp, dp.data?.derived?.id || '')
   if (dp.data?.derived?.id) ok('探索·派生属性真实计算', await api('POST', `/api/explorations/derived/${dp.data.derived.id}/eval`))
   // 场景：新建 → 暂存 → 合并（真实写 objects）
-  const scn = await api('POST', '/api/explorations/scenarios', { name: `${TAG}演示场景`, desc: '暂存一次新建再合并' })
+  const scn = await api('POST', '/api/explorations/scenarios', { name: `Q4新增注塑机上线`, desc: '暂存一次新建再合并' })
   ok('场景·新建', scn, scn.data?.scenario?.id || '')
   if (scn.data?.scenario?.id) {
     const sid = scn.data.scenario.id
-    ok('场景·暂存变更', await api('POST', `/api/explorations/scenarios/${sid}/change`, { op: 'create', typeId: 'device', values: { code: `${TAG}SCN-001`, name: `${TAG}场景设备`, type: '注塑机', health: 92, status: '运行', downtime: 0 } }))
+    ok('场景·暂存变更', await api('POST', `/api/explorations/scenarios/${sid}/change`, { op: 'create', typeId: 'device', values: { code: `F3-IM-3001`, name: `三期车间注塑机`, type: '注塑机', health: 92, status: '运行', downtime: 0 } }))
     ok('场景·合并真实写对象', await api('POST', `/api/explorations/scenarios/${sid}/merge`))
   }
 }
@@ -414,9 +559,9 @@ cleanData()
 /* ---------------- 13. 模块3：真实时序采集 + 治理执行 ---------------- */
 {
   // 从对象批量采集真实 ts_points（health 值）
-  const c = await api('POST', '/api/ops/timeseries/collect-from-objects', { metric: 'DEMO_health', valueKey: 'health' })
+  const c = await api('POST', '/api/ops/timeseries/collect-from-objects', { metric: 'health_daily', valueKey: 'health' })
   ok('时序·从对象批量真实采集', c, `collected=${c.data?.collected ?? c.data?.inserted ?? '?'}`)
-  ok('时序·真实序列查询', await api('GET', '/api/ops/timeseries/series?metric=DEMO_health'))
+  ok('时序·真实序列查询', await api('GET', '/api/ops/timeseries/series?metric=health_daily'))
   // 治理执行三件套
   ok('治理·真实敏感扫描', await api('POST', '/api/ops/governance/scan', { writeBack: true }))
   ok('治理·脱敏预览', await api('POST', '/api/ops/governance/mask'))
@@ -431,7 +576,7 @@ cleanData()
     method, headers: { ...H(PERSONAL), 'Content-Type': 'application/json' },
     body: body === undefined ? undefined : JSON.stringify(body),
   }).then(async (x) => ({ ok: x.status === 200, status: x.status, data: await x.json().catch(() => ({})) })).catch(() => ({ ok: false, status: 0, data: {} }))
-  const c = await pcall('POST', '/api/data-layer/connections', { name: `${TAG}CSV数据源`, type: 'CSV', database: 'demo-data/files/expenses.csv' })
+  const c = await pcall('POST', '/api/data-layer/connections', { name: `财务报销流水CSV`, type: 'CSV', database: 'demo-data/files/expenses.csv' })
   ok('文件源·登记 CSV 连接', c, c.data?.id || '')
   if (c.data?.id) {
     const id = c.data.id
@@ -439,14 +584,14 @@ cleanData()
     ok('文件源·列与样本预览', await pcall('GET', `/api/data-layer/connections/${id}/file-preview`))
     ok('文件源·CSV 同步为支出对象', await pcall('POST', `/api/data-layer/connections/${id}/sync-file`, { table: 'csv', typeId: 'expense' }))
   }
-  const j = await api('POST', '/api/data-layer/connections', { name: `${TAG}JSON数据源`, type: 'JSON', database: 'demo-data/files/devices.json' })
+  const j = await api('POST', '/api/data-layer/connections', { name: `设备台账导出JSON`, type: 'JSON', database: 'demo-data/files/devices.json' })
   ok('文件源·登记 JSON 连接', j, j.data?.id || '')
   if (j.data?.id) ok('文件源·JSON 多表清单', await api('GET', `/api/data-layer/connections/${j.data.id}/file-tables`))
 }
 
 /* ---------------- 15. 模块5：动态调度本地求解 ---------------- */
 {
-  ok('调度·生成演示任务', await api('POST', '/api/scheduling/seed'))
+  ok('调度·生成基准排程任务', await api('POST', '/api/scheduling/seed'))
   const solve = await api('POST', '/api/scheduling/solve')
   ok('调度·真实启发式求解', solve, `placed=${solve.data?.placed} conflicts=${solve.data?.conflicts?.length}`)
   if (solve.data?.planId) ok('调度·应用方案', await api('POST', `/api/scheduling/apply/${solve.data.planId}`))
@@ -494,8 +639,8 @@ cleanData()
         const date = `${y}-${pad(mo + 1)}-${pad(day)}`
         const dueMs = m.getTime() + (day - 1 + 30) * 86400_000
         const status = mi >= 22 ? (s % 3 === 0 ? '生产中' : '已发货') : '已完成'
-        const id = `order:DEMO_SO_${y}${pad(mo + 1)}_${pad(s)}`
-        inserted += insOrder.run(id, 'order', JSON.stringify({ no: `DEMO_SO_${y}${pad(mo + 1)}_${pad(s)}`, amount: amt, date, due: iso(new Date(dueMs)), status }), 'DEMO_ChatBI', m.getTime() + s * 3600_000, m.getTime() + s * 3600_000, ORG).changes
+        const id = `order:SO-${y}${pad(mo + 1)}-${pad(s)}`
+        inserted += insOrder.run(id, 'order', JSON.stringify({ no: `SO-${y}${pad(mo + 1)}-${pad(s)}`, amount: amt, date, due: iso(new Date(dueMs)), status }), '数据组', m.getTime() + s * 3600_000, m.getTime() + s * 3600_000, ORG).changes
       }
     })
   })
@@ -540,6 +685,9 @@ cleanData()
 }
 
 /* ---------------- 汇总 ---------------- */
+// 把本轮创建的对象 id 与静态名称清单写入 manifest，供 --clean 精确清理（幂等基石）
+writeManifest()
+console.log(`\n装载清单已写入（对象 id ${createdObjectIds.length} 个 + 实体名称清单）`)
 console.log('\n=== 装载结果 ===')
 for (const s of summary) console.log(`  ${s.ok ? '✓' : '✗'} ${s.label}${s.detail ? ' — ' + s.detail : ''}`)
 const passed = summary.filter((s) => s.ok).length

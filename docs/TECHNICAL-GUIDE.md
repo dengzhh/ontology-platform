@@ -308,7 +308,7 @@
 - **功能**：应用/组件/变量 CRUD、组件绑定真实对象集、编辑态实时预览。
 - **原理**：`server/routes/workshop.ts`（挂 `/api/workshop`，`/apps` CRUD 与 `widgets`/`variables` 持久化见 :71-96），落 `workshop_apps`（`widgets` JSON 含 `config.typeId`）——这个字段同时是数据血缘 `appDependencies` 的来源；`spaceCanModel` 校验建模写权限。
 - **边界**：组件类型与变量绑定为平台内轻量实现，非通用低代码引擎；无运行时沙箱/第三方组件市场。
-- **验证**：load.mjs `DEMO_运营看板`；截图 `workshop.png`。
+- **验证**：load.mjs `设备运维监控台`；截图 `workshop.png`。
 
 #### ㉘ 自动化引擎 `/apps/automate`
 
@@ -349,7 +349,7 @@
 - **功能**：Agent CRUD（空间隔离）、工具勾选、护栏（敏感脱敏 / 动作需人工确认）、系统提示词、对话测试与历史。
 - **原理**：配置 JSON 存 `ai_conversations(scene='agent')` + 首条 `role:'system'` 消息（`aip.ts:35-180`）；`server/engine/agentTools.ts` 按关键词 `wants()` 推断调用 6 类工具，`mask()` 对 `SENSITIVE_KEYS` 打 `前2***后2`；工具结果拼入 prompt 强制「基于此回答，不要编造」；`semanticGuard` 拒答。
 - **边界**：工具由**关键词推断而非 function-calling**；`execute_action` 从不真实写库；`maskSensitive` 开关在 `agentTools.ts:70` 两分支相同、**实际恒定生效**；仅 `send_notification` 真实落库；对话测试无本地降级（502）；无流式/多轮 tool 循环。
-- **验证**：smoke Agent CRUD + chat；load.mjs `DEMO_演示助手`。
+- **验证**：smoke Agent CRUD + chat；load.mjs `设备运维助理`。
 
 #### ㉝ 文档分析 `/aip/threads`
 
