@@ -16,6 +16,7 @@
  *   - 失败不中断，最终输出通过/失败汇总，退出码 = 失败数。
  */
 import { writeFileSync } from 'node:fs'
+import Database from 'better-sqlite3'
 
 const BASE = (process.env.BASE_URL || 'http://localhost:5000').replace(/\/$/, '')
 const ACCOUNT = process.env.ACCOUNT || 'chen.xingye'
@@ -348,6 +349,52 @@ async function main() {
     const savedId = savePreset.data?.id
     log(savePreset.ok && !!savedId && savedId !== 'PRESET-TICKET-ROUTE', '保存预设另存为副本（不覆盖内置模板）', `id=${savedId}`)
     if (savedId) created.push({ label: `工作流副本 ${savedId}`, cleanup: () => req('DELETE', `/api/logic/workflows/${savedId}`) })
+
+    // 预设 output 节点挂真实动作；preview 零副作用、apply 真实落库
+    const device = presets.find((p) => p.id === 'PRESET-DEVICE-TRIAGE')
+    const outActs = (device?.steps ?? []).filter((s) => s.type === 'output' && s.action && s.action !== 'none')
+    log(outActs.length === 2, '预设 output 节点配置真实业务动作（create_object/send_notification/create_approval）', outActs.map((s) => s.action).join(','))
+    const countSql = () => {
+      const db = new Database('data/ontoos.db', { readonly: true })
+      const n = {
+        obj: db.prepare("SELECT count(*) c FROM objects WHERE id LIKE 'ticket:WF-%'").get().c,
+        nt: db.prepare("SELECT count(*) c FROM notifications WHERE id LIKE 'NT-WF-%'").get().c,
+        ap: db.prepare("SELECT count(*) c FROM approvals WHERE id LIKE 'AP-WF-%'").get().c,
+      }
+      db.close(); return n
+    }
+    const before = countSql()
+    const prev = await req('POST', '/api/logic/workflows/PRESET-DEVICE-TRIAGE/run', { input: '设备 M-9 健康度 42，停机 12 小时', mode: 'preview' }, 200, 20000)
+    const afterPrev = countSql()
+    log(prev.ok && prev.data?.mode === 'preview' && (prev.data?.actions ?? []).length === 1 && prev.data.actions[0].status === 'preview' && JSON.stringify(before) === JSON.stringify(afterPrev), 'dry-run 预览只返回动作、不写业务数据', `actions=${(prev.data?.actions ?? []).length}`)
+    const app = await req('POST', '/api/logic/workflows/PRESET-DEVICE-TRIAGE/run', { input: '设备 M-9 健康度 42，停机 12 小时', mode: 'apply' }, 200, 20000)
+    const afterApp = countSql()
+    log(app.ok && app.data?.mode === 'apply' && (app.data?.actions ?? []).some((a) => a.status === 'done' && a.refId) && afterApp.obj === afterPrev.obj + 1, 'apply 确认后真实创建对象/工单并返回 refId', `obj ${afterPrev.obj}→${afterApp.obj}`)
+    // 通知与审批两类动作
+    const nt = await req('POST', '/api/logic/workflows/PRESET-DEVICE-TRIAGE/run', { input: '设备 M-1 健康度 82', mode: 'apply' }, 200, 20000)
+    const ap = await req('POST', '/api/logic/workflows/PRESET-TICKET-ROUTE/run', { input: '紧急：主轴故障停机', mode: 'apply' }, 200, 20000)
+    log((nt.data?.actions ?? []).some((a) => a.action === 'send_notification' && a.status === 'done') && (ap.data?.actions ?? []).some((a) => a.action === 'create_approval' && a.status === 'done'), 'apply 也真实写入通知与待审批单', '')
+    // 连线控制：显式 next 跳过中间节点
+    const linked = await req('POST', '/api/logic/workflows', { name: `${PREFIX}_连线跳转`, steps: [
+      { id: 's1', type: 'input', label: '输入', next: 's3' },
+      { id: 's2', type: 'output', label: '被跳过', action: 'none' },
+      { id: 's3', type: 'output', label: '目标', action: 'none' },
+    ] }, 200)
+    const lid = linked.data?.id
+    if (lid) {
+      created.push({ label: `连线工作流 ${lid}`, cleanup: () => req('DELETE', `/api/logic/workflows/${lid}`) })
+      const lr = await req('POST', `/api/logic/workflows/${lid}/run`, { input: '链路测试', mode: 'preview' }, 200, 20000)
+      const ls = (lr.data?.results ?? []).map((r) => r.step)
+      log(lr.ok && ls.includes('目标') && !ls.includes('被跳过'), '显式 next 连线按目标跳转（跳过中间节点）', ls.join('→'))
+    }
+    const badNext = await req('POST', '/api/logic/workflows', { name: `${PREFIX}_断链`, steps: [{ id: 's1', type: 'input', label: '输入', next: 'NO_SUCH' }] }, 400)
+    log(badNext.ok, '连线目标不存在保存返回 400', '')
+    // 清理本断言产生的业务副作用（只删工作流前缀数据，不动演示数据）
+    const cleanDb = new Database('data/ontoos.db')
+    cleanDb.prepare("DELETE FROM objects WHERE id LIKE 'ticket:WF-%'").run()
+    cleanDb.prepare("DELETE FROM notifications WHERE id LIKE 'NT-WF-%'").run()
+    cleanDb.prepare("DELETE FROM approvals WHERE id LIKE 'AP-WF-%'").run()
+    cleanDb.close()
   }
 
   // 2.11b 文档分析：改名后的对话式分析 + 多轮追问契约

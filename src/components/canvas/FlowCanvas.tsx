@@ -52,6 +52,11 @@ export default function FlowCanvas({
   selectedId,
   onNodeClick,
   onNodeMove,
+  onNodeDragStart,
+  onNodeDragEnd,
+  onEdgeClick,
+  connectMode = false,
+  connectFrom,
   zoomable = false,
 }: {
   nodes: FlowNode[]
@@ -62,6 +67,14 @@ export default function FlowCanvas({
   selectedId?: string | null
   onNodeClick?: (id: string) => void
   onNodeMove?: (id: string, x: number, y: number) => void
+  /** 拖拽开始（记 undo 快照用）/ 结束（提交一次历史） */
+  onNodeDragStart?: (id: string) => void
+  onNodeDragEnd?: (id: string) => void
+  /** 点击连线（删除连线）/ 连接模式下点节点 */
+  onEdgeClick?: (edge: FlowEdge) => void
+  /** 连接模式：点第一个节点为起点、点第二个节点建立连线 */
+  connectMode?: boolean
+  connectFrom?: string | null
   zoomable?: boolean
 }) {
   const nodeMap = new Map(nodes.map((n) => [n.id, n]))
@@ -172,7 +185,7 @@ export default function FlowCanvas({
             const to = nodeMap.get(e.to)
             if (!from || !to) return null
             return (
-              <g key={i}>
+              <g key={i} className={onEdgeClick ? 'cursor-pointer' : undefined}>
                 <path
                   d={edgePath(from, to)}
                   fill="none"
@@ -181,6 +194,17 @@ export default function FlowCanvas({
                   strokeDasharray={e.dashed || e.kind === 'no' ? '5 4' : undefined}
                   markerEnd="url(#flow-arrow)"
                 />
+                {onEdgeClick && (
+                  <path
+                    d={edgePath(from, to)}
+                    fill="none"
+                    stroke="transparent"
+                    strokeWidth={14}
+                    onClick={(ev) => { ev.stopPropagation(); onEdgeClick(e) }}
+                  >
+                    <title>点击删除此连线</title>
+                  </path>
+                )}
                 {e.label && (
                   <>
                     <rect x={(from.x + (from.w ?? 176) + to.x) / 2 - e.label.length * 5 - 6} y={(from.y + to.y) / 2 + 22} rx={4} width={e.label.length * 10 + 12} height={18} fill="#fff" stroke="#e2e8f0" />
@@ -207,6 +231,7 @@ export default function FlowCanvas({
                     const p = toViewBox(e)
                     const c = toContent(p.x, p.y)
                     dragRef.current = { id: n.id, startX: c.x, startY: c.y, ox: n.x, oy: n.y, moved: false }
+                    onNodeDragStart?.(n.id)
                     ;(e.target as HTMLElement).setPointerCapture?.(e.pointerId)
                   }}
                   onPointerMove={(e) => {
@@ -219,17 +244,24 @@ export default function FlowCanvas({
                     if (Math.abs(dx) + Math.abs(dy) > 3) d.moved = true
                     if (d.moved) onNodeMove(n.id, Math.max(0, Math.round(d.ox + dx)), Math.max(0, Math.round(d.oy + dy)))
                   }}
-                  onPointerUp={() => { dragRef.current = null }}
+                  onPointerUp={() => {
+                    const d = dragRef.current
+                    if (d?.moved) onNodeDragEnd?.(n.id)
+                    dragRef.current = null
+                  }}
                   onClick={(e) => {
-                    if (!onNodeClick) return
                     e.stopPropagation()
                     const d = dragRef.current
                     if (d?.moved) return
-                    onNodeClick(n.id)
+                    // 连接模式：点节点作为连线起点/终点（由页面处理），不进入属性编辑
+                    if (connectMode) { onNodeClick?.(n.id); return }
+                    onNodeClick?.(n.id)
                   }}
                   className={cn(
                     'relative flex h-full items-center gap-2.5 rounded-xl border bg-white px-3 shadow-card transition-shadow',
                     selected ? 'border-brand-500 ring-2 ring-brand-200' : n.status === 'err' ? 'border-red-300' : n.status === 'warn' ? 'border-amber-300' : 'border-slate-200',
+                    connectMode && 'ring-2 ring-violet-300',
+                    connectFrom === n.id && 'border-violet-500 ring-2 ring-violet-400',
                     interactive && 'cursor-pointer select-none hover:shadow-md',
                     onNodeMove && 'cursor-grab active:cursor-grabbing',
                   )}

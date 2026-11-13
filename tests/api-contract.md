@@ -165,8 +165,11 @@
   POST /workflows                 # 步骤类型 input|llm|condition|transform|output；transform 支持 extract(field)/keyword(words)/format
                                   # 校验：空节点/重复 id/非法类型/分支目标不存在 → 400；同名幂等；传预设 id 保存 → 自动另存副本（名称加「副本」，返回新 id）
   DELETE /workflows/:id
-  POST /workflows/:id/run         # id 可为预设 id（直接运行内置模板）；condition 按 nextYes/nextNo 真实跳转；
-                                  # transform 本地确定性执行；llm 节点网关不可用时降级为规则摘要（不返回 502，结果标 branch=degraded）
+  POST /workflows/:id/run         # body { input, mode?: 'preview'|'apply' }，默认 preview；id 可为预设 id
+                                  # 跳转优先级：condition nextYes/nextNo > 显式 next > 数组顺序；防环 20 步；transform 本地确定性；llm 降级标 branch=degraded
+                                  # preview：只返回 { workflow, mode, results, final, actions[] }，actions[].status='preview'，不写业务数据
+                                  # apply：output 节点 action=create_object(默认 ticket)/send_notification/create_approval 真实落库，
+                                  #        actions[].status='done' 且带 refId；审计区分「预览工作流 / 应用工作流动作」
 
 ### /api/objects  (objectRoutes)
   GET /types

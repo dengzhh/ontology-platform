@@ -15,9 +15,16 @@ export interface WorkflowStep {
   words?: string
   x?: number
   y?: number
+  /** 显式后继节点（连线可编辑）：留空则按数组顺序继续；条件节点优先用 nextYes/nextNo */
+  next?: string
   /** 条件节点分支目标：命中走 nextYes，否则走 nextNo；留空按数组顺序继续 */
   nextYes?: string
   nextNo?: string
+  /** output 节点执行的真实业务动作（运行 apply 模式时落库；preview 只预览不执行） */
+  action?: 'none' | 'create_object' | 'send_notification' | 'create_approval'
+  /** action 参数：create_object 用 objectTypeId（默认 ticket）；通知/审批用 title */
+  objectTypeId?: string
+  actionTitle?: string
 }
 
 export interface WorkflowPreset {
@@ -33,8 +40,11 @@ export interface WorkflowPreset {
   steps: WorkflowStep[]
 }
 
-const OUT = (id: string, label: string, format: string, x: number, y: number): WorkflowStep =>
-  ({ id, type: 'output', label, outputFormat: format, x, y })
+/** output 节点：action 指定运行 apply 模式时产生的真实业务动作（preview 只预览不落库） */
+const OUT = (
+  id: string, label: string, format: string, x: number, y: number,
+  action: WorkflowStep['action'] = 'none', actionTitle?: string,
+): WorkflowStep => ({ id, type: 'output', label, outputFormat: format, x, y, action, actionTitle: actionTitle ?? label })
 
 export const WORKFLOW_PRESETS: WorkflowPreset[] = [
   {
@@ -48,8 +58,8 @@ export const WORKFLOW_PRESETS: WorkflowPreset[] = [
       { id: 's1', type: 'input', label: '输入告警文本', outputFormat: '设备告警/工单文本', x: 40, y: 60 },
       { id: 's2', type: 'transform', label: '提取健康度', transform: 'extract', field: '健康度', x: 280, y: 60 },
       { id: 's3', type: 'condition', label: '健康度 ≥ 60？', condition: '健康度 >= 60', x: 520, y: 60, nextYes: 's4', nextNo: 's5' },
-      OUT('s4', '自动归档', '健康设备清单', 760, 20),
-      OUT('s5', '转维修复核', '维修工单草稿', 760, 150),
+      OUT('s4', '自动归档', '健康设备清单', 760, 20, 'send_notification', '设备健康分诊：已归档'),
+      OUT('s5', '转维修复核', '维修工单草稿', 760, 150, 'create_object', '设备健康分诊：生成维修工单'),
     ],
   },
   {
@@ -63,8 +73,8 @@ export const WORKFLOW_PRESETS: WorkflowPreset[] = [
       { id: 's1', type: 'input', label: '输入工单文本', outputFormat: '工单/报修文本', x: 40, y: 60 },
       { id: 's2', type: 'transform', label: '关键词标记', transform: 'keyword', words: '紧急,停机,故障,告警', x: 280, y: 60 },
       { id: 's3', type: 'condition', label: '是否紧急？', condition: '包含 命中', x: 520, y: 60, nextYes: 's4', nextNo: 's5' },
-      OUT('s4', '优先处理', 'P1 紧急工单', 760, 20),
-      OUT('s5', '常规排队', 'P3 常规工单', 760, 150),
+      OUT('s4', '优先处理', 'P1 紧急工单', 760, 20, 'create_approval', '紧急工单需审批：立即处理'),
+      OUT('s5', '常规排队', 'P3 常规工单', 760, 150, 'create_object', '生成 P3 常规工单'),
     ],
   },
   {
@@ -78,8 +88,8 @@ export const WORKFLOW_PRESETS: WorkflowPreset[] = [
       { id: 's1', type: 'input', label: '输入订单文本', outputFormat: '订单摘要文本', x: 40, y: 60 },
       { id: 's2', type: 'transform', label: '提取金额', transform: 'extract', field: '金额', x: 280, y: 60 },
       { id: 's3', type: 'condition', label: '金额 ≥ 50 万？', condition: '金额 >= 500000', x: 520, y: 60, nextYes: 's4', nextNo: 's5' },
-      OUT('s4', '大客户跟进', '重点订单清单', 760, 20),
-      OUT('s5', '常规履约', '常规订单清单', 760, 150),
+      OUT('s4', '大客户跟进', '重点订单清单', 760, 20, 'create_approval', '大客户订单需重点跟进审批'),
+      OUT('s5', '常规履约', '常规订单清单', 760, 150, 'send_notification', '常规订单进入履约'),
     ],
   },
   {
@@ -93,8 +103,8 @@ export const WORKFLOW_PRESETS: WorkflowPreset[] = [
       { id: 's1', type: 'input', label: '输入文档摘要', outputFormat: '文档标题/正文摘要', x: 40, y: 60 },
       { id: 's2', type: 'transform', label: '关键词标记', transform: 'keyword', words: '合同,发票,付款,金额', x: 280, y: 60 },
       { id: 's3', type: 'condition', label: '是否财务类？', condition: '包含 命中', x: 520, y: 60, nextYes: 's4', nextNo: 's5' },
-      OUT('s4', '财务归档', '财务文档分类', 760, 20),
-      OUT('s5', '通用知识库', '通用文档分类', 760, 150),
+      OUT('s4', '财务归档', '财务文档分类', 760, 20, 'create_approval', '财务类文档归档复核'),
+      OUT('s5', '通用知识库', '通用文档分类', 760, 150, 'send_notification', '文档已归入通用知识库'),
     ],
   },
   {
@@ -108,8 +118,8 @@ export const WORKFLOW_PRESETS: WorkflowPreset[] = [
       { id: 's1', type: 'input', label: '输入文档摘要', outputFormat: '文档标题/正文摘要', x: 40, y: 60 },
       { id: 's2', type: 'llm', label: 'AI 提炼要点', prompt: '从文档中提取关键事实、数值指标与处置建议，输出结构化清单，并明确标注「建议」段落', model: 'auto', x: 300, y: 60 },
       { id: 's3', type: 'condition', label: '含明确建议？', condition: '包含 建议', x: 560, y: 60, nextYes: 's4', nextNo: 's5' },
-      OUT('s4', '输出分析报告', '结构化要点 + 建议清单', 820, 20),
-      OUT('s5', '人工复核', '待复核文档草稿', 820, 150),
+      OUT('s4', '输出分析报告', '结构化要点 + 建议清单', 820, 20, 'send_notification', '文档分析报告已生成'),
+      OUT('s5', '人工复核', '待复核文档草稿', 820, 150, 'create_approval', '文档分析结果需人工复核'),
     ],
   },
   {
@@ -123,8 +133,8 @@ export const WORKFLOW_PRESETS: WorkflowPreset[] = [
       { id: 's1', type: 'input', label: '输入设备数据', outputFormat: '设备告警/维修记录', x: 40, y: 60 },
       { id: 's2', type: 'llm', label: 'LLM 归因分析', prompt: '分析设备故障的可能原因，给出 3 条处置建议，并输出结构化结果（含置信度）', model: 'auto', x: 300, y: 60 },
       { id: 's3', type: 'condition', label: '含高置信结论？', condition: '包含 建议', x: 560, y: 60, nextYes: 's4', nextNo: 's5' },
-      OUT('s4', '输出分析结论', '归因报告 + 处置建议', 820, 20),
-      OUT('s5', '人工复核', '待复核分析草稿', 820, 150),
+      OUT('s4', '输出分析结论', '归因报告 + 处置建议', 820, 20, 'create_object', '停机归因：生成维修工单'),
+      OUT('s5', '人工复核', '待复核分析草稿', 820, 150, 'create_approval', '停机归因结论需人工复核'),
     ],
   },
 ]

@@ -1,5 +1,5 @@
-import { useEffect, useState, type ReactNode } from 'react'
-import { Sparkles, Plus, Trash2, X, Loader2, Play, Save, Search, GitBranch, ArrowRight, ArrowUp, ArrowDown, Copy, Link2, Wand2, Zap } from 'lucide-react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { Sparkles, Plus, Trash2, X, Loader2, Play, Save, Search, GitBranch, ArrowRight, ArrowUp, ArrowDown, Copy, Link2, Wand2, Zap, Undo2, Redo2 } from 'lucide-react'
 import PageShell from '@/components/ui/PageShell'
 import Btn from '@/components/ui/Btn'
 import { Badge } from '@/components/ui/Badge'
@@ -61,6 +61,19 @@ export default function AipLogic() {
   const [wfId, setWfId] = useState<string | null>(null)
   const [wfName, setWfName] = useState('设备停机归因分析')
   const [steps, setSteps] = useState<WorkflowStep[]>(defaultSteps())
+  /** undo/redo：每次离散编辑提交一个快照；拖拽只在结束时提交一次 */
+  const [history, setHistory] = useState<WorkflowStep[][]>([defaultSteps()])
+  const [histIdx, setHistIdx] = useState(0)
+  const stepsRef = useRef(steps)
+  stepsRef.current = steps
+  const dragSnapshot = useRef<WorkflowStep[] | null>(null)
+  const [connectMode, setConnectMode] = useState(false)
+  const [connectFrom, setConnectFrom] = useState<string | null>(null)
+  /** 连线删除确认 */
+  const [pendingEdge, setPendingEdge] = useState<FlowEdge | null>(null)
+  /** 运行预览（dry-run）与确认 */
+  const [runPreview, setRunPreview] = useState<{ actions: { step: string; action: string; title: string; detail: string }[]; final: string; results: { step: string; type: string; output: string; branch?: string }[] } | null>(null)
+  const [appliedActions, setAppliedActions] = useState<{ step: string; action: string; title: string; status: string; detail: string; refId?: string }[]>([])
   const [selectedStep, setSelectedStep] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [stepResults, setStepResults] = useState<{ step: string; type: string; output: string; branch?: string }[]>([])
@@ -72,6 +85,28 @@ export default function AipLogic() {
   const notify = (m: string) => { setToast(m); setTimeout(() => setToast(''), 3000) }
   const sel = steps.find((s) => s.id === selectedStep)
 
+  /** 提交一次编辑快照：截断 redo 分支、最多保留 50 步 */
+  function commitSteps(next: WorkflowStep[]) {
+    const snap = next.map((s) => ({ ...s }))
+    setSteps(snap)
+    setHistory((h) => [...h.slice(0, histIdx + 1), snap.map((s) => ({ ...s }))].slice(-50))
+    setHistIdx((i) => Math.min(i + 1, 49))
+  }
+  function undo() { if (histIdx <= 0) return; const i = histIdx - 1; setHistIdx(i); setSteps(history[i].map((s) => ({ ...s }))); notify('已撤销') }
+  function redo() { if (histIdx >= history.length - 1) return; const i = histIdx + 1; setHistIdx(i); setSteps(history[i].map((s) => ({ ...s }))); notify('已重做') }
+  /** 键盘 Ctrl+Z / Ctrl+Shift+Z（输入框内不拦截，保证正常文本编辑） */
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== 'z') return
+      const t = e.target as HTMLElement
+      if (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable) return
+      e.preventDefault()
+      e.shiftKey ? redo() : undo()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  })
+
   // 首次加载：有用户工作流则选第一个，否则默认载入「设备健康分诊」预设（开箱即用）
   useEffect(() => {
     if (!wfId && workflows.length) {
@@ -81,13 +116,21 @@ export default function AipLogic() {
         const p = WORKFLOW_PRESETS.find((x) => x.id === w.id)
         if (p) { loadPreset(p); return }
       }
-      setWfId(w.id); setWfName(w.name); setSteps(normalizeSteps(w.steps))
+      setWfId(w.id); setWfName(w.name); resetSteps(w.steps)
     }
   }, [workflows, wfId])
 
   /** 把后端返回的旧工作流补齐坐标（兼容历史数据，避免节点全部叠在原点） */
   function normalizeSteps(raw: WorkflowStep[]): WorkflowStep[] {
     return (raw ?? []).map((s, i) => ({ ...s, x: s.x ?? 40 + (i % 3) * 240, y: s.y ?? 40 + Math.floor(i / 3) * 140 }))
+  }
+  /** 载入新工作流时重置 undo/redo 历史（避免撤销回退到上一个工作流） */
+  function resetSteps(raw: WorkflowStep[]) {
+    const snap = normalizeSteps(raw)
+    setSteps(snap)
+    setHistory([snap.map((s) => ({ ...s }))])
+    setHistIdx(0)
+    setConnectMode(false); setConnectFrom(null)
   }
 
   async function selectWorkflow(id: string) {
@@ -97,14 +140,14 @@ export default function AipLogic() {
       const p = WORKFLOW_PRESETS.find((x) => x.id === id)
       if (p) { loadPreset(p); return }
     }
-    setWfId(w.id); setWfName(w.name); setSteps(normalizeSteps(w.steps)); setSelectedStep(null); setStepResults([]); setTestResult('')
+    setWfId(w.id); setWfName(w.name); resetSteps(w.steps); setSelectedStep(null); setStepResults([]); setTestResult('')
   }
 
   /** 一键载入预设模板：填入节点与示例输入，直接可点运行；保存时自动另存为副本 */
   function loadPreset(p: WorkflowPreset) {
     setWfId(p.id)
     setWfName(p.name)
-    setSteps(normalizeSteps(p.steps))
+    resetSteps(p.steps)
     setTestInput(p.sampleInput)
     setSelectedStep(null)
     setStepResults([])
@@ -141,11 +184,18 @@ export default function AipLogic() {
   }
 
   function newWorkflow() {
-    setWfId(null); setWfName('新建工作流'); setSteps(defaultSteps()); setSelectedStep(null); setStepResults([]); setTestResult('')
+    setWfId(null); setWfName('新建工作流'); resetSteps(defaultSteps()); setSelectedStep(null); setStepResults([]); setTestResult('')
   }
 
+  /** 文字/字段编辑：实时更新但不记历史；失焦时 commitCurrent() 记一次快照 */
   function updateStep(id: string, patch: Partial<WorkflowStep>) {
     setSteps((list) => list.map((s) => (s.id === id ? { ...s, ...patch } : s)))
+  }
+  /** 把当前最新状态提交为一次 undo 快照（用于字段编辑失焦、拖拽结束） */
+  function commitCurrent() {
+    const snap = stepsRef.current.map((s) => ({ ...s }))
+    setHistory((h) => [...h.slice(0, histIdx + 1), snap.map((s) => ({ ...s }))].slice(-50))
+    setHistIdx((i) => Math.min(i + 1, 49))
   }
 
   function addStep(type: WorkflowStep['type']) {
@@ -159,7 +209,7 @@ export default function AipLogic() {
       ...(type === 'condition' ? { condition: '置信度 > 0.8' } : {}),
       ...(type === 'transform' ? { transform: 'extract' as const, field: '健康度' } : {}),
     }
-    setSteps((list) => [...list, step])
+    commitSteps([...steps, step])
     setSelectedStep(id)
   }
 
@@ -167,19 +217,44 @@ export default function AipLogic() {
     const s = steps.find((x) => x.id === id)
     if (!s) return
     const newId = `s${Date.now().toString(36)}`
-    setSteps((list) => [...list, { ...s, id: newId, label: `${s.label} 副本`, x: (s.x ?? 40) + 30, y: (s.y ?? 60) + 90 }])
+    commitSteps([...steps, { ...s, id: newId, label: `${s.label} 副本`, x: (s.x ?? 40) + 30, y: (s.y ?? 60) + 90 }])
     setSelectedStep(newId)
   }
 
   function moveStep(id: string, dir: -1 | 1) {
-    setSteps((list) => {
-      const i = list.findIndex((s) => s.id === id)
-      const j = i + dir
-      if (i < 0 || j < 0 || j >= list.length) return list
-      const next = [...list]
-      ;[next[i], next[j]] = [next[j], next[i]]
-      return next
+    const i = steps.findIndex((s) => s.id === id)
+    const j = i + dir
+    if (i < 0 || j < 0 || j >= steps.length) return
+    const next = [...steps]
+    ;[next[i], next[j]] = [next[j], next[i]]
+    commitSteps(next)
+  }
+
+  /** 连线控制：连接模式下点两节点建立连线；点已有连线弹确认删除 */
+  function handleNodeClick(id: string) {
+    if (connectMode) {
+      if (!connectFrom) { setConnectFrom(id); notify(`已选起点「${steps.find((s) => s.id === id)?.label}」，请点目标节点`); return }
+      if (connectFrom === id) { setConnectFrom(null); return }
+      const src = steps.find((s) => s.id === connectFrom)
+      const next = steps.map((s) => s.id === connectFrom ? { ...s, next: id } : s)
+      commitSteps(next)
+      notify(`已建立连线：${src?.label} → ${steps.find((s) => s.id === id)?.label}`)
+      setConnectFrom(null); setConnectMode(false)
+      return
+    }
+    setSelectedStep(id)
+  }
+
+  function removeEdge(edge: FlowEdge) {
+    const next = steps.map((s) => {
+      if (s.id !== edge.from) return s
+      if (edge.kind === 'yes') return { ...s, nextYes: undefined }
+      if (edge.kind === 'no') return { ...s, nextNo: undefined }
+      return { ...s, next: undefined }
     })
+    commitSteps(next)
+    setPendingEdge(null)
+    notify('连线已删除（该节点将按数组顺序继续）')
   }
 
   function doDelete() {
@@ -196,8 +271,9 @@ export default function AipLogic() {
       return
     }
     const id = pendingDelete
-    setSteps((list) => list.filter((s) => s.id !== id).map((s) => ({
+    commitSteps(steps.filter((s) => s.id !== id).map((s) => ({
       ...s,
+      next: s.next === id ? undefined : s.next,
       nextYes: s.nextYes === id ? undefined : s.nextYes,
       nextNo: s.nextNo === id ? undefined : s.nextNo,
     })))
@@ -206,18 +282,43 @@ export default function AipLogic() {
     notify('节点已删除')
   }
 
+  /** 第一步：dry-run 预览（不产生任何业务副作用），弹确认层 */
   async function runTest() {
-    setBusy(true); setTestResult(''); setStepResults([])
+    setBusy(true); setTestResult(''); setStepResults([]); setAppliedActions([])
     try {
       const id = await saveWorkflow()
       if (!id) { setBusy(false); return }
-      const res = await api<{ final: string; results: { step: string; type: string; output: string; branch?: string }[] }>(`/logic/workflows/${id}/run`, { method: 'POST', body: { input: testInput } })
+      const res = await api<{
+        final: string
+        results: { step: string; type: string; output: string; branch?: string }[]
+        actions: { step: string; action: string; title: string; status: string; detail: string; refId?: string }[]
+      }>(`/logic/workflows/${id}/run`, { method: 'POST', body: { input: testInput, mode: 'preview' } })
       setStepResults(res.results ?? [])
       setTestResult(res.final || '（无输出）')
+      setRunPreview({ actions: (res.actions ?? []).map((a) => ({ step: a.step, action: a.action, title: a.title, detail: a.detail })), final: res.final || '', results: res.results ?? [] })
+    } catch (e) {
+      setTestResult(`预览失败：${e instanceof Error ? e.message : '未知错误'}`)
+    } finally { setBusy(false) }
+  }
+
+  /** 第二步：用户确认后 apply，真实执行动作并展示结果 */
+  async function applyRun() {
+    if (!runPreview || !wfId) return
+    setBusy(true)
+    try {
+      const res = await api<{
+        final: string
+        results: { step: string; type: string; output: string; branch?: string }[]
+        actions: { step: string; action: string; title: string; status: string; detail: string; refId?: string }[]
+      }>(`/logic/workflows/${wfId}/run`, { method: 'POST', body: { input: testInput, mode: 'apply' } })
+      setStepResults(res.results ?? [])
+      setTestResult(res.final || '（无输出）')
+      setAppliedActions(res.actions ?? [])
+      notify(res.actions?.length ? `已实际执行 ${res.actions.length} 个动作（对象/通知/审批已落库）` : '已运行（本次无业务动作）')
       wfQ.reload()
     } catch (e) {
-      setTestResult(`执行失败：${e instanceof Error ? e.message : '未知错误'}`)
-    } finally { setBusy(false) }
+      notify(`应用失败：${e instanceof Error ? e.message : '未知错误'}`)
+    } finally { setBusy(false); setRunPreview(null) }
   }
 
   // 生成画布节点坐标（拖拽位置优先，缺省按序号排布）
@@ -235,13 +336,15 @@ export default function AipLogic() {
     }
   })
 
-  // 连线：条件节点按 nextYes/nextNo 生成两条带标签的分支线，其余按数组顺序串联
+  // 连线：条件节点按 nextYes/nextNo 分支线；显式 next 覆盖顺序；无连线时按数组顺序串联
   const canvasEdges: FlowEdge[] = []
   for (let i = 0; i < steps.length; i++) {
     const s = steps[i]
     if (s.type === 'condition') {
       if (s.nextYes) canvasEdges.push({ from: s.id, to: s.nextYes, label: '是', kind: 'yes' })
       if (s.nextNo) canvasEdges.push({ from: s.id, to: s.nextNo, label: '否', kind: 'no', dashed: true })
+    } else if (s.next) {
+      canvasEdges.push({ from: s.id, to: s.next, label: '连线' })
     } else if (i < steps.length - 1) {
       const next = steps[i + 1]
       // 若下一个节点是某条件分支的目标，则不画顺序线（由分支线覆盖）
@@ -259,11 +362,11 @@ export default function AipLogic() {
       subtitle="可视化编排 LLM 工作流：点击节点编辑、拖拽布局、调整顺序与分支连线，可测试运行"
       benchmark="AI 工作流"
       features={[
-        '节点编辑：点击画布节点即选中，右侧配置名称/提示词/模型/条件/输出格式',
-        '画布交互：拖拽节点调整位置（坐标随工作流保存）、选中节点高亮描边',
-        '顺序与分支：上移/下移改变执行顺序；条件节点可指定「是/否」分支目标并着色连线',
-        '删除确认：删除节点或工作流均弹层确认，可取消；节点可复制',
-        '真实闭环：服务端持久化 + 按连线逐步执行引擎（LLM/条件分支真实生效）',
+        '节点编辑：点击画布节点即选中，右侧配置名称/提示词/模型/条件/输出动作',
+        '画布交互：滚轮缩放、空白拖拽平移、节点拖拽布局；undo/redo（Ctrl+Z / Ctrl+Shift+Z）',
+        '连线控制：「连接模式」点两节点建立连线、点连线删除；一般节点可设 next，条件节点可设「是/否」目标',
+        '删除确认：删除节点/连线/工作流均弹层确认，可取消；节点可复制',
+        '真实闭环：运行先 dry-run 预览动作 → 确认后 apply 真实落库（工单对象/通知/审批单），结果可查',
       ]}
       actions={
         <>
@@ -278,7 +381,10 @@ export default function AipLogic() {
           </select>
           <input value={wfName} onChange={(e) => setWfName(e.target.value)} className="w-36 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs" placeholder="工作流名称" />
           <Btn size="sm" onClick={newWorkflow}>新建</Btn>
-          <Btn size="sm" onClick={runTest} disabled={busy}>{busy ? <Loader2 size={13} className="animate-spin" /> : <Play size={13} />} 运行</Btn>
+          <Btn size="sm" variant="ghost" onClick={undo} disabled={histIdx <= 0} title="撤销 Ctrl+Z"><Undo2 size={13} /></Btn>
+          <Btn size="sm" variant="ghost" onClick={redo} disabled={histIdx >= history.length - 1} title="重做 Ctrl+Shift+Z"><Redo2 size={13} /></Btn>
+          <Btn size="sm" variant={connectMode ? 'primary' : 'ghost'} onClick={() => { setConnectMode(!connectMode); setConnectFrom(null); notify(connectMode ? '已退出连接模式' : '连接模式：先点起点节点，再点目标节点建立连线') }} title="连接模式"><Link2 size={13} /> 连线</Btn>
+          <Btn size="sm" onClick={runTest} disabled={busy}>{busy ? <Loader2 size={13} className="animate-spin" /> : <Play size={13} />} 预览运行</Btn>
           <Btn size="sm" variant="primary" onClick={() => saveWorkflow().then((id) => id && notify(wfId && wfId.startsWith('PRESET-') ? '已另存为我的工作流副本（模板保持不变）' : '工作流已保存（服务端持久化）'))} disabled={busy}><Save size={13} /> 保存</Btn>
           {wfId && <Btn size="sm" variant="ghost" onClick={() => setPendingDelete('workflow')}><Trash2 size={12} /></Btn>}
         </>
@@ -333,7 +439,7 @@ export default function AipLogic() {
             )
           })}
           <div className="mt-3 rounded-lg bg-slate-50 p-2 text-[10px] leading-4 text-slate-400">
-            提示：点击画布节点进行编辑；拖拽可调整布局；连线由节点顺序与条件分支目标自动生成。
+            提示：点节点编辑；拖拽调布局；「连线」按钮进入连接模式点两节点建线，点已有连线可删除；Ctrl+Z 撤销。
           </div>
         </div>
 
@@ -346,11 +452,16 @@ export default function AipLogic() {
             height={420}
             zoomable
             selectedId={selectedStep}
-            onNodeClick={(id) => setSelectedStep(id)}
+            onNodeClick={handleNodeClick}
             onNodeMove={(id, x, y) => updateStep(id, { x, y })}
+            onNodeDragStart={() => { dragSnapshot.current = stepsRef.current.map((s) => ({ ...s })) }}
+            onNodeDragEnd={() => { if (dragSnapshot.current) { dragSnapshot.current = null; commitCurrent() } }}
+            onEdgeClick={(edge) => setPendingEdge(edge)}
+            connectMode={connectMode}
+            connectFrom={connectFrom}
           />
           <div className="mt-2 flex items-center justify-center gap-3 text-[11px] text-slate-400">
-            <span>{steps.length} 个节点 · 点击节点编辑 / 拖拽调整布局 / 滚轮缩放</span>
+            <span>{connectMode ? `连接模式：${connectFrom ? '请点目标节点' : '请点起点节点'}` : `${steps.length} 个节点 · 点节点编辑 / 滚轮缩放 / 点连线删除`}</span>
             <span className="flex items-center gap-1"><span className="h-0.5 w-4 bg-emerald-500" />是</span>
             <span className="flex items-center gap-1"><span className="h-0.5 w-4 border-t-2 border-dashed border-amber-500" />否</span>
           </div>
@@ -364,19 +475,20 @@ export default function AipLogic() {
           </div>
           {sel ? (
             <div className="space-y-3">
-              <Field label="节点名称"><Input value={sel.label} onChange={(e) => updateStep(sel.id, { label: e.target.value })} /></Field>
+              <Field label="节点名称"><Input value={sel.label} onChange={(e) => updateStep(sel.id, { label: e.target.value })} onBlur={commitCurrent} /></Field>
               {sel.type === 'llm' && (
                 <>
                   <Field label="系统提示词" hint="指导 LLM 如何处理数据">
                     <textarea
                       value={sel.prompt ?? ''}
                       onChange={(e) => updateStep(sel.id, { prompt: e.target.value })}
+                      onBlur={commitCurrent}
                       placeholder="分析给定的设备数据…"
                       className="h-24 w-full resize-none rounded-lg border border-slate-200 p-2.5 text-xs focus:border-brand-400 focus:outline-none"
                     />
                   </Field>
                   <Field label="模型">
-                    <Select className="w-full" value={sel.model ?? 'auto'} onChange={(e) => updateStep(sel.id, { model: e.target.value })}>
+                    <Select className="w-full" value={sel.model ?? 'auto'} onChange={(e) => updateStep(sel.id, { model: e.target.value })} onBlur={commitCurrent}>
                       <option value="auto">自动（用平台配置）</option>
                       <option value="deepseek-v4.1-flash">deepseek-v4.1-flash</option>
                       <option value="glm-5.3-flash">glm-5.3-flash</option>
@@ -387,35 +499,35 @@ export default function AipLogic() {
               {sel.type === 'transform' && (
                 <>
                   <Field label="转换方式" hint="本地确定性执行，无需 AI 网关">
-                    <Select className="w-full" value={sel.transform ?? 'extract'} onChange={(e) => updateStep(sel.id, { transform: e.target.value as WorkflowStep['transform'] })}>
+                    <Select className="w-full" value={sel.transform ?? 'extract'} onChange={(e) => updateStep(sel.id, { transform: e.target.value as WorkflowStep['transform'] })} onBlur={commitCurrent}>
                       <option value="extract">提取数值字段（供条件判断）</option>
                       <option value="keyword">关键词命中标记</option>
                       <option value="format">格式化输出</option>
                     </Select>
                   </Field>
                   {sel.transform !== 'keyword' && sel.transform !== 'format' && (
-                    <Field label="字段名" hint="如：健康度 / 金额"><Input value={sel.field ?? ''} onChange={(e) => updateStep(sel.id, { field: e.target.value })} placeholder="健康度" /></Field>
+                    <Field label="字段名" hint="如：健康度 / 金额"><Input value={sel.field ?? ''} onChange={(e) => updateStep(sel.id, { field: e.target.value })} onBlur={commitCurrent} placeholder="健康度" /></Field>
                   )}
                   {sel.transform === 'keyword' && (
-                    <Field label="关键词" hint="逗号分隔，命中任一即标记"><Input value={sel.words ?? ''} onChange={(e) => updateStep(sel.id, { words: e.target.value })} placeholder="紧急,停机,故障" /></Field>
+                    <Field label="关键词" hint="逗号分隔，命中任一即标记"><Input value={sel.words ?? ''} onChange={(e) => updateStep(sel.id, { words: e.target.value })} onBlur={commitCurrent} placeholder="紧急,停机,故障" /></Field>
                   )}
                 </>
               )}
               {sel.type === 'condition' && (
                 <>
                   <Field label="条件表达式" hint="如：置信度 > 0.8 / 金额 >= 100 / 包含 命中">
-                    <Input value={sel.condition ?? ''} onChange={(e) => updateStep(sel.id, { condition: e.target.value })} placeholder="如：置信度 > 0.8" />
+                    <Input value={sel.condition ?? ''} onChange={(e) => updateStep(sel.id, { condition: e.target.value })} onBlur={commitCurrent} placeholder="如：置信度 > 0.8" />
                   </Field>
                   <div className="rounded-lg border border-slate-100 bg-slate-50/60 p-2.5">
                     <div className="mb-1.5 flex items-center gap-1 text-[11px] font-semibold text-slate-600"><Link2 size={12} /> 分支连线</div>
                     <Field label="是 → 目标节点">
-                      <Select className="w-full" value={sel.nextYes ?? ''} onChange={(e) => updateStep(sel.id, { nextYes: e.target.value || undefined })}>
+                      <Select className="w-full" value={sel.nextYes ?? ''} onChange={(e) => updateStep(sel.id, { nextYes: e.target.value || undefined })} onBlur={commitCurrent}>
                         <option value="">（按顺序继续）</option>
                         {steps.filter((s) => s.id !== sel.id).map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
                       </Select>
                     </Field>
                     <Field label="否 → 目标节点">
-                      <Select className="w-full" value={sel.nextNo ?? ''} onChange={(e) => updateStep(sel.id, { nextNo: e.target.value || undefined })}>
+                      <Select className="w-full" value={sel.nextNo ?? ''} onChange={(e) => updateStep(sel.id, { nextNo: e.target.value || undefined })} onBlur={commitCurrent}>
                         <option value="">（按顺序继续）</option>
                         {steps.filter((s) => s.id !== sel.id).map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
                       </Select>
@@ -424,7 +536,34 @@ export default function AipLogic() {
                 </>
               )}
               {(sel.type === 'input' || sel.type === 'output') && (
-                <Field label="格式说明"><Input value={sel.outputFormat ?? ''} onChange={(e) => updateStep(sel.id, { outputFormat: e.target.value })} placeholder="如：对象集/JSON" /></Field>
+                <Field label="格式说明"><Input value={sel.outputFormat ?? ''} onChange={(e) => updateStep(sel.id, { outputFormat: e.target.value })} onBlur={commitCurrent} placeholder="如：对象集/JSON" /></Field>
+              )}
+              {/* 一般节点连线：显式 next 覆盖数组顺序 */}
+              {sel.type !== 'condition' && (
+                <Field label="后继节点（连线）" hint="留空则按画布顺序继续；也可在「连线」模式点两节点建立">
+                  <Select className="w-full" value={sel.next ?? ''} onChange={(e) => updateStep(sel.id, { next: e.target.value || undefined })} onBlur={commitCurrent}>
+                    <option value="">（按顺序继续）</option>
+                    {steps.filter((s) => s.id !== sel.id).map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
+                  </Select>
+                </Field>
+              )}
+              {/* output 节点的真实业务动作（apply 模式落库） */}
+              {sel.type === 'output' && (
+                <div className="rounded-lg border border-emerald-100 bg-emerald-50/50 p-2.5">
+                  <div className="mb-1.5 flex items-center gap-1 text-[11px] font-semibold text-emerald-700"><Zap size={12} /> 运行动作</div>
+                  <Field label="动作类型">
+                    <Select className="w-full" value={sel.action ?? 'none'} onChange={(e) => updateStep(sel.id, { action: e.target.value as WorkflowStep['action'] })} onBlur={commitCurrent}>
+                      <option value="none">不产生动作（仅输出文本）</option>
+                      <option value="create_object">创建对象/工单（落 objects）</option>
+                      <option value="send_notification">发送通知（落 notifications）</option>
+                      <option value="create_approval">创建待审批单（落 approvals）</option>
+                    </Select>
+                  </Field>
+                  {sel.action && sel.action !== 'none' && (
+                    <Field label="动作标题"><Input value={sel.actionTitle ?? ''} onChange={(e) => updateStep(sel.id, { actionTitle: e.target.value })} onBlur={commitCurrent} placeholder="如：生成维修工单" /></Field>
+                  )}
+                  <div className="mt-1 text-[10px] leading-4 text-emerald-700/70">预览运行只显示将执行的动作，确认后才会真实写入业务数据。</div>
+                </div>
               )}
               {/* 顺序操作 */}
               <div className="flex items-center gap-1.5">
@@ -457,7 +596,7 @@ export default function AipLogic() {
           <div className="flex items-center justify-between">
             <span className="text-[11px] text-slate-400">工作流：{steps.map((s) => s.label).join(' → ')}</span>
             <Btn size="sm" variant="primary" onClick={runTest} disabled={busy}>
-              {busy ? '执行中…' : '运行工作流'}
+              {busy ? '预览中…' : '预览运行（dry-run）'}
             </Btn>
           </div>
           {stepResults.length > 0 && (
@@ -489,12 +628,71 @@ export default function AipLogic() {
         </div>
       </Card>
 
+      {/* 已执行的真实动作（apply 后展示，带落库 id） */}
+      {appliedActions.length > 0 && (
+        <Card>
+          <CardHeader title="已执行的业务动作" desc="以下数据已真实落库，可在对应模块查询" />
+          <div className="space-y-1.5">
+            {appliedActions.map((a, i) => (
+              <div key={i} className="flex items-center gap-2 rounded-lg border border-emerald-100 bg-emerald-50/40 px-3 py-2">
+                <Badge color="green">{a.status === 'done' ? '已执行' : a.status}</Badge>
+                <span className="text-[12px] font-medium text-slate-700">{a.title}</span>
+                <span className="text-[11px] text-slate-500">{a.detail}</span>
+                {a.refId && <code className="ml-auto font-mono text-[10px] text-slate-400">{a.refId}</code>}
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+
       {pendingDelete && (
         <ConfirmModal
           title={pendingDelete === 'workflow' ? '删除工作流？' : '删除节点？'}
           desc={`「${pendingName}」删除后不可恢复，可在确认前取消。`}
           onCancel={() => setPendingDelete(null)}
           onConfirm={doDelete}
+        />
+      )}
+
+      {/* dry-run 预览确认：明确列出将产生的业务动作，可取消 */}
+      {runPreview && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm" onClick={() => setRunPreview(null)}>
+          <div className="w-[520px] max-w-[94vw] overflow-y-auto rounded-2xl border border-slate-200 bg-white p-5 shadow-pop" style={{ maxHeight: '86vh' }} onClick={(e) => e.stopPropagation()}>
+            <div className="mb-3 flex items-center justify-between">
+              <div>
+                <div className="text-sm font-bold text-slate-900">确认运行：将产生 {runPreview.actions.length} 个业务动作</div>
+                <div className="mt-0.5 text-[11px] text-slate-400">预览阶段未写入任何业务数据；确认后才会真实落库</div>
+              </div>
+              <button aria-label="关闭" onClick={() => setRunPreview(null)} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100"><X size={16} /></button>
+            </div>
+            {runPreview.actions.length > 0 ? (
+              <div className="space-y-1.5">
+                {runPreview.actions.map((a, i) => (
+                  <div key={i} className="rounded-lg border border-amber-200 bg-amber-50/60 px-3 py-2">
+                    <div className="flex items-center gap-2"><Badge color="amber">{a.action}</Badge><span className="text-[12px] font-semibold text-slate-800">{a.title}</span></div>
+                    <div className="mt-1 text-[11px] text-slate-600">{a.detail}</div>
+                    <div className="mt-0.5 text-[10px] text-slate-400">来自节点：{a.step}</div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-4 text-center text-[12px] text-slate-500">本次运行没有配置业务动作，仅输出文本，不会产生业务数据。</div>
+            )}
+            <div className="mt-4 flex justify-end gap-2">
+              <Btn size="sm" onClick={() => setRunPreview(null)}>取消</Btn>
+              <Btn size="sm" variant="primary" onClick={applyRun} disabled={busy}>{busy ? <Loader2 size={13} className="animate-spin" /> : <Play size={13} />} 确认执行</Btn>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 连线删除确认 */}
+      {pendingEdge && (
+        <ConfirmModal
+          title="删除连线？"
+          desc={`将移除「${steps.find((s) => s.id === pendingEdge.from)?.label} → ${steps.find((s) => s.id === pendingEdge.to)?.label}」的连线；该节点随后按数组顺序继续。`}
+          onCancel={() => setPendingEdge(null)}
+          onConfirm={() => removeEdge(pendingEdge)}
         />
       )}
     </PageShell>

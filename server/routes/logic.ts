@@ -58,10 +58,10 @@ logicRoutes.post('/workflows', async (c) => {
   if (new Set(steps.map((s) => s.id)).size !== steps.length) return c.json({ error: '节点 id 重复' }, 400)
   const validTypes = new Set(['input', 'llm', 'condition', 'transform', 'output'])
   if (steps.some((s) => !validTypes.has(s.type))) return c.json({ error: '存在未知节点类型' }, 400)
-  // 分支目标必须指向存在的节点，避免运行时断链
+  // 连线目标（next / nextYes / nextNo）必须指向存在的节点，避免运行时断链
   for (const s of steps) {
-    for (const target of [s.nextYes, s.nextNo]) {
-      if (target && !steps.some((x) => x.id === target)) return c.json({ error: `节点「${s.label}」的分支目标 ${target} 不存在` }, 400)
+    for (const target of [s.next, s.nextYes, s.nextNo]) {
+      if (target && !steps.some((x) => x.id === target)) return c.json({ error: `节点「${s.label}」的连线目标 ${target} 不存在` }, 400)
     }
   }
   const list = readWorkflows(space.id)
@@ -105,9 +105,13 @@ logicRoutes.post('/workflows/:id/run', async (c) => {
     ? { id: preset.id, name: preset.name, steps: preset.steps, updatedAt: 0 }
     : readWorkflows(space.id).find((w) => w.id === id)
   if (!wf) return c.json({ error: '工作流不存在' }, 404)
-  const body = await c.req.json<{ input: string }>()
+  const body = await c.req.json<{ input: string; mode?: 'preview' | 'apply' }>()
   const input = body.input ?? ''
+  // preview 只计算并预览动作，不写任何业务数据；apply 才真实执行（默认 preview，防止误触发副作用）
+  const mode = body.mode === 'apply' ? 'apply' : 'preview'
   const results: StepResult[] = []
+  /** 动作预览/执行结果：每条含节点、动作类型、目标、状态与产物 id */
+  const actions: { step: string; action: string; title: string; status: 'preview' | 'done' | 'skipped'; detail: string; refId?: string }[] = []
   let ctx = input
   let conditionResult: boolean | null = null
   const byId = new Map(wf.steps.map((s) => [s.id, s]))
@@ -122,10 +126,12 @@ logicRoutes.post('/workflows/:id/run', async (c) => {
     let nextId: string | undefined
     const idx = wf.steps.findIndex((s) => s.id === step.id)
     const inOrderNext = idx >= 0 && idx + 1 < wf.steps.length ? wf.steps[idx + 1].id : undefined
+    // 连线可编辑：显式 next 优先于数组顺序；条件节点仍用 nextYes/nextNo
+    const linkedNext = step.next ?? inOrderNext
 
     if (step.type === 'input') {
       results.push({ step: step.label, type: step.type, input, output: ctx })
-      nextId = inOrderNext
+      nextId = linkedNext
     } else if (step.type === 'transform') {
       // 本地确定性转换：extract 提取数值字段并写入上下文（供条件节点解析）；keyword 追加命中标记；format 格式化
       if (step.transform === 'extract' && step.field) {
@@ -142,7 +148,7 @@ logicRoutes.post('/workflows/:id/run', async (c) => {
         ctx = `【${step.label}】\n${ctx}`
         results.push({ step: step.label, type: step.type, input: stepInput.slice(0, 120), output: '已格式化输出' })
       }
-      nextId = inOrderNext
+      nextId = linkedNext
     } else if (step.type === 'llm') {
       try {
         const prompt = [
@@ -156,12 +162,12 @@ logicRoutes.post('/workflows/:id/run', async (c) => {
         const reason = e instanceof Error ? e.message : '未知'
         ctx = `【LLM 节点降级】AI 网关暂不可用（${reason}），以下为基于输入数据的规则摘要：\n${ctx}\n建议：1) 核对设备维护记录 2) 检查关联维修工单 3) 安排人工复核`
         results.push({ step: step.label, type: step.type, input: stepInput.slice(0, 120), output: `AI 网关不可用，已降级为规则摘要（${reason.slice(0, 60)}）`, branch: 'degraded' })
-        nextId = inOrderNext
+        nextId = linkedNext
         current = nextId ? byId.get(nextId) : undefined
         continue
       }
       results.push({ step: step.label, type: step.type, input: stepInput.slice(0, 120), output: ctx.slice(0, 400) })
-      nextId = inOrderNext
+      nextId = linkedNext
     } else if (step.type === 'condition') {
       // 解析条件：如 "置信度 > 0.8" / "amount >= 100"
       const m = (step.condition ?? '').match(/(.+?)\s*(>=|<=|>|<|==|=|包含|不包含)\s*(.+)/)
@@ -189,19 +195,64 @@ logicRoutes.post('/workflows/:id/run', async (c) => {
         } catch { conditionResult = true }
       }
       results.push({ step: step.label, type: step.type, input: stepInput.slice(0, 120), output: conditionResult ? '是 → 走主分支' : '否 → 走人工复核分支', branch: conditionResult ? 'yes' : 'no' })
-      // 按分支目标跳转；留空则按数组顺序继续
-      nextId = conditionResult ? (step.nextYes ?? inOrderNext) : (step.nextNo ?? inOrderNext)
+      // 分支目标优先，其次显式 next，最后数组顺序
+      nextId = conditionResult ? (step.nextYes ?? linkedNext) : (step.nextNo ?? linkedNext)
     } else {
-      // output 为终点：不再按数组顺序继续（否则分支两出口会串行执行）
+      // output 节点：产生真实业务动作（preview 只预览，apply 才落库）
       results.push({ step: step.label, type: step.type, input: stepInput.slice(0, 120), output: ctx.slice(0, 500) })
-      nextId = step.nextYes
+      const act = step.action ?? 'none'
+      const title = step.actionTitle ?? step.label
+      if (act !== 'none') {
+        const preview = { step: step.label, action: act, title, status: 'preview' as const, detail: '' }
+        if (act === 'create_object') {
+          const typeId = step.objectTypeId ?? 'ticket'
+          preview.detail = `写入 1 个「${typeId}」对象（内容取本次输出）`
+          if (mode === 'apply') {
+            const now = Date.now()
+            const oid = `WF-${now.toString(36).toUpperCase()}`
+            const values = typeId === 'ticket'
+              ? { no: oid, priority: 'P2', fault: ctx.slice(0, 200), status: '待派单', hours: 0 }
+              : { code: oid, name: title, status: '待机' }
+            db.insert(tables.objects).values({
+              id: `${typeId}:${oid}`, typeId, values, createdBy: c.get('user').name,
+              createdAt: now, updatedAt: now, spaceId: space.id,
+            }).onConflictDoNothing().run()
+            actions.push({ ...preview, status: 'done', refId: `${typeId}:${oid}` })
+          } else actions.push(preview)
+        } else if (act === 'send_notification') {
+          preview.detail = `写入 1 条通知（${title}）`
+          if (mode === 'apply') {
+            const nid = `NT-WF-${Date.now().toString(36)}`
+            db.insert(tables.notifications).values({ id: nid, title: `工作流：${title}`, body: ctx.slice(0, 300), level: 'info', tag: '工作流', read: 0, createdAt: Date.now() }).run()
+            actions.push({ ...preview, status: 'done', refId: nid })
+          } else actions.push(preview)
+        } else if (act === 'create_approval') {
+          preview.detail = `写入 1 张待审批单（${title}）`
+          if (mode === 'apply') {
+            const aid = `AP-WF-${Date.now().toString(36)}`
+            db.insert(tables.approvals).values({
+              id: aid, title: `工作流：${title}`, kind: '工作流动作',
+              payload: { workflow: wf.name, step: step.label, output: ctx.slice(0, 500) },
+              requester: c.get('user').name, risk: '中', status: '待审批', decidedBy: '', createdAt: Date.now(),
+            }).run()
+            actions.push({ ...preview, status: 'done', refId: aid })
+          } else actions.push(preview)
+        }
+      }
+      // output 为终点：仅当显式 next 时才继续（避免分支两出口串行执行）
+      nextId = step.next
     }
     current = nextId ? byId.get(nextId) : undefined
   }
 
+  // preview 不写业务数据，只留一条轻量审计；apply 记录实际动作数便于追溯
   db.insert(tables.auditEvents).values({
     id: `AE-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-    actor: c.get('user').name, action: '运行工作流', target: wf.name, ip: '本地', createdAt: Date.now(),
+    actor: c.get('user').name,
+    action: mode === 'apply' ? '应用工作流动作' : '预览工作流',
+    target: wf.name,
+    detail: { mode, actionCount: actions.length, refs: actions.filter((a) => a.refId).map((a) => a.refId) },
+    ip: '本地', createdAt: Date.now(),
   }).run()
-  return c.json({ workflow: wf.name, results, final: ctx })
+  return c.json({ workflow: wf.name, mode, results, final: ctx, actions })
 })

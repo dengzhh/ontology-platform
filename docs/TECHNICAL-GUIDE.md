@@ -1,6 +1,6 @@
 # OntoOS 技术文档 · 功能模块全景
 
-> **版本**：v1.0.0+（含 ChatBI v3、工作流预设、界面中文化） · **更新日期**：2026-11-13
+> **版本**：v1.0.0+（含 ChatBI v3、工作流预设、界面中文化） · **更新日期**：2026-11-14
 > **定位**：面向二次开发者与系统评估者的**完整技术参考**——逐个模块说明「做什么 / 怎么实现 / 边界在哪 / 怎么验证」。
 > **诚实原则**：本文严格区分「真实落库实现」与「示意/登记/未接入」，所有边界照实写；与 `src/config/status.ts`（页面状态单一事实来源）和各页 `features` 横幅保持一致。
 
@@ -25,9 +25,9 @@
 
 > **编号说明**：下文用 ①~㊺ 顺序编号，其中 ⑯ 为对象存储横切说明、㉖ 为域归属说明、㊲ 为全局侧滑智能助手（非独立路由），三者不计入 42 个应用页面；其余 42 个编号与 `src/config/nav.ts` 的 42 项一一对应。
 
-**文档内截图**：`docs/screenshots/` 下 25 张 1440×900 真实界面截图（登录、仪表盘、建模、图谱、检索、ChatBI 四形态、工作流预设、审批、控制面板等），全部来自运行中的系统。
+**文档内截图**：`docs/screenshots/` 下 27 张 1440×900 真实界面截图（登录、仪表盘、建模、图谱、检索、ChatBI 四形态、工作流预设、审批、控制面板等），全部来自运行中的系统。
 
-**配套资产**：`demo-data/FEATURE-MATRIX.md`（42 页验证矩阵）、`tests/api-contract.md`（端点契约）、`tests/smoke.mjs`（177 项黑盒断言）、`demo-data/load.mjs`（92 项幂等数据集）、`CONVENTIONS.md`（开发规范）。
+**配套资产**：`demo-data/FEATURE-MATRIX.md`（42 页验证矩阵）、`tests/api-contract.md`（端点契约）、`tests/smoke.mjs`（183 项黑盒断言）、`demo-data/load.mjs`（92 项幂等数据集）、`CONVENTIONS.md`（开发规范）。
 
 ---
 
@@ -333,14 +333,16 @@
 
 #### ㉛ 工作流编排 `/aip/logic`
 
-- **功能**：可视化节点编排（点选编辑/拖拽布局/上移下移/复制/删除确认）、**画布滚轮缩放 / 空白拖拽平移 / 控件放大缩小复位 / 百分比**、条件分支连线、6 个开箱即用预设（4 个离线可跑）、保存/删除/测试运行、逐步执行记录、另存副本。
-- **原理**：`server/routes/logic.ts` + `shared/workflowTemplates.ts`：`transform` 离线节点（extract 提数值 / keyword 命中标记 / format）、条件节点按 `nextYes/nextNo` 真实跳转（`byId` Map + `visited` 防环 + 20 步上限）、`llm` 节点网关失败降级规则摘要并标 `branch:'degraded'`；工作流存 `settings.key='logic_workflows_${spaceId}'`；预设不落库动态合并；保存预设自动另存「副本」。`FlowCanvas` 支持点选/拖拽（viewBox 坐标换算）与可选 `zoomable`：单 `<g transform="translate(tx ty) scale(s)">` 承载缩放平移，节点点击/拖拽把屏幕坐标反算到内容坐标，**任意缩放下操作准确**；不传 `zoomable` 的管道构建/流程编排页保持静态（向后兼容）。
-- **边界**：`WorkflowStep.model` 字段服务端未使用（统一走全局 AI 配置）；画布连线仅按数组顺序 + nextYes/nextNo 生成；无并发/定时触发/版本管理；2 个 AI 增强预设依赖网关；缩放范围 30%~400%。详见 [§4.2](#42-函数沙箱与工作流)。
-- **验证**：smoke 预设契约/分支跳转；load.mjs 92/92；浏览器实测缩放/平移/复位/缩放后节点拖拽与点选；截图 `aip-logic-presets.png`、`aip-logic-zoom.png`。
+- **功能**：可视化节点编排（点选编辑/拖拽布局/上移下移/复制/删除确认）、**画布滚轮缩放 / 空白拖拽平移 / 复位 / 百分比**、**undo/redo（按钮 + Ctrl+Z / Ctrl+Shift+Z）**、**连线控制**（连接模式点两节点建 `next`、点已有连线删除确认、条件节点「是/否」目标可编辑）、6 个开箱即用预设（4 个离线可跑）、保存/删除/**预览运行 → 确认 → 真实执行**、逐步执行记录与动作结果、另存副本。
+- **原理**：`server/routes/logic.ts` + `shared/workflowTemplates.ts`：`transform` 离线节点（extract 提数值 / keyword 命中标记 / format）、条件节点按 `nextYes/nextNo` 真实跳转、**一般节点按显式 `next` 连线跳转**（无则回退数组顺序）、`byId` Map + `visited` 防环 + 20 步上限；`llm` 节点网关失败降级规则摘要并标 `branch:'degraded'`。**真实业务动作**：output 节点 `action ∈ create_object|send_notification|create_approval|none`，`POST /workflows/:id/run` 的 `mode=preview`（默认）只算结果并返回 `actions[]` 预览**不写业务数据**，`mode=apply` 才真实写 `objects`（工单对象）/ `notifications` / `approvals` 并返回 `refId`，审计区分「预览工作流 / 应用工作流动作」。工作流存 `settings.key='logic_workflows_${spaceId}'`；预设不落库动态合并；保存预设自动另存「副本」。`FlowCanvas` 支持点选/拖拽（坐标反算）与可选 `zoomable`（单 `<g transform>` 承载缩放平移）；不传 `zoomable` 的管道构建/流程编排页保持静态（向后兼容）。
+- **边界**：`WorkflowStep.model` 字段服务端未使用（统一走全局 AI 配置）；连线只能一条 `next` + 条件两分支（无并行/汇聚/多条件复合）；无并发/定时触发/版本管理；2 个 AI 增强预设依赖网关；缩放范围 30%~400%；`create_object` 默认写 `ticket` 类型，非通用任意类型校验；undo 以「离散操作 + 字段失焦 + 拖拽结束」为粒度，最多 50 步。详见 [§4.2](#42-函数沙箱与工作流)。
+- **验证**：smoke 183/183（dry-run 零副作用 / apply 真实落库并返回 refId / 通知与审批两类动作 / `next` 跳转 / 断链 400）；load.mjs 92/92；浏览器实测 undo/redo、连接模式建线、连线删除取消、预览确认取消与应用结果展示、缩放/平移/复位；截图 `aip-logic-presets.png`、`aip-logic-zoom.png`、`aip-logic-actions.png`。
 
 ![工作流预设](screenshots/aip-logic-presets.png)
 
 ![工作流画布缩放（125%）](screenshots/aip-logic-zoom.png)
+
+![工作流真实动作执行结果](screenshots/aip-logic-actions.png)
 
 #### ㉜ 智能体构建 `/aip/agents`
 
@@ -384,7 +386,7 @@
 - **功能**：22 工具对话式操作平台；ChatBI 对话内出图（折线/饼图/条形/交叉热力表 + 同比环比对比卡）；主动澄清；会话持久化；多空间快捷示例；双引擎降级。
 - **原理**：完整链路见 [§4.1](#41-智能助手与语义层) 与 [§4.3](#43-chatbi-与聚合引擎)。
 - **边界**：最多 4 轮工具循环；图表仅最近 12 / 前 8 组；`cites` 协议字段未渲染来源 chips；本地引擎只能发起约 14 个工具（其余需 LLM 模式）；网关 429 时降级本地引擎。
-- **验证**：smoke 177 项；4 张 ChatBI 截图（`aip-chatbi.png` / `-trend.png` / `-cross.png`）。
+- **验证**：smoke 183 项；4 张 ChatBI 截图（`aip-chatbi.png` / `-trend.png` / `-cross.png`）。
 
 ![ChatBI 分组聚合](screenshots/aip-chatbi.png)
 
@@ -476,7 +478,7 @@
 
 **node:vm 沙箱**（`server/engine/functionSandbox.ts`）：每次执行 `runInNewContext` 全新 realm；`timeout:2000` + `contextCodeGeneration:{strings:false, wasm:false}`；只注入 `input/Math/JSON/Date/String/Number/Array/Object`，显式屏蔽 `require/process/global/fetch/eval/Function`；`HARDEN` 抹掉 `constructor.constructor` 逃逸链；结果 `normalize()` 处理 undefined/BigInt/循环引用；始终返回 `{ok,result,error,durationMs}`。版本链路：草稿自动测试 → publish/rollback 移动发布指针 → `run` 执行已发布版本。
 
-**工作流预设**（`shared/workflowTemplates.ts`）：6 个模板，4 个 `needsLlm:false`（`transform` + `condition` 全离线确定性分流：设备健康分诊 / 工单紧急分流 / 订单金额分级 / 文档归类标记），2 个 AI 增强（文档智能分析 / LLM 停机归因）。条件节点按 `nextYes/nextNo` 真实跳转、`visited` 防环、20 步上限；LLM 节点失败降级规则摘要并标 `branch:'degraded'`；`output` 为终点不串行执行；保存预设自动另存副本。
+**工作流预设**（`shared/workflowTemplates.ts`）：6 个模板，4 个 `needsLlm:false`（`transform` + `condition` 全离线确定性分流：设备健康分诊 / 工单紧急分流 / 订单金额分级 / 文档归类标记），2 个 AI 增强（文档智能分析 / LLM 停机归因）。条件节点按 `nextYes/nextNo` 真实跳转、一般节点按显式 `next` 连线跳转、`visited` 防环、20 步上限；LLM 节点失败降级规则摘要并标 `branch:'degraded'`；`output` 为终点不串行执行；保存预设自动另存副本。**真实动作闭环**：每个预设的 output 节点挂 `create_object` / `send_notification` / `create_approval`，`mode=preview` 只预览不落库，用户确认后 `mode=apply` 才写工单对象 / 通知 / 待审批单并返回 `refId`，页面展示「已执行的业务动作」。编辑侧支持 undo/redo、连接模式建线、点连线删除确认、缩放平移。
 
 **文档分析 vs 工作流编排（分工）**：文档分析 = 带知识库文档上下文的**多轮对话**（`followup` / 草稿 `retry`）；工作流编排 = **可复用、可编排、一次跑完**的处理链。两页互相导流。
 
@@ -546,7 +548,7 @@
 | 知识 | 分块(260/50 重叠) + BM25 + 向量余弦 + RRF；远程 embedding + 本地 256 维哈希降级 | 本地哈希非语义；不解析 PDF；两路各 30 条上限；换模型需重建索引 |
 | 分析 | 单类型分组聚合、分桶、时间窗、排序、TOP-N、同比环比、二维交叉 | 无多表 join / 无子查询 / 无流式 / 无 HAVING / 无空桶填充；聚合仅 count/sum/avg |
 | AI 助手 | 22 工具 function-calling、双引擎降级、语义守卫、ChatBI 四形态出图、主动澄清 | 最多 4 轮循环；本地引擎仅约 14 工具；`cites` 未渲染；图表仅前 8/最近 12 组 |
-| 工作流 | 6 预设（4 离线）、可视化编辑、分支跳转、另存副本、逐步执行 | 无并发/定时触发/版本管理；2 个预设依赖网关；`model` 字段未用 |
+| 工作流 | 6 预设（4 离线）、可视化编辑（undo/redo/连线控制/缩放）、分支与显式 next 跳转、dry-run→apply 真实动作（工单/通知/审批单）、另存副本 | 无并发/定时触发/版本管理；连线仅单 next + 两分支（无并行/汇聚）；`model` 字段未用；`create_object` 默认 ticket 类型；2 个预设依赖网关 |
 | 文档分析 | 多轮追问、草稿保留/retry、引用文档标签 | 不降级（明确报错）；上下文 5000 字截断；无段落级引用 |
 | Agent | CRUD、护栏、工具结果注入、对话测试 | 关键词推断非 function-calling；`execute_action` 不真实写库；`maskSensitive` 开关失效；无降级 |
 | 调度 | 本地贪心启发式求解、冲突、应用、指标、甘特 | **非 COPT/OR-Tools 最优解**；7 天视界；不接外部排产主数据 |
@@ -579,7 +581,7 @@ npm run seed             # 演示数据
 npm run dev              # 前端 5174 + API 5000
 python demo-data/build_external_db.py
 node demo-data/load.mjs  # 92 项验证数据集
-node tests/smoke.mjs     # 177 项黑盒断言
+node tests/smoke.mjs     # 183 项黑盒断言
 ```
 
 默认账号 `chen.xingye / ontos@2026`；顶栏可切换组织 / 个人 / 家庭空间。
@@ -598,7 +600,7 @@ node tests/smoke.mjs     # 177 项黑盒断言
 | `contour.png` | 探索分析 | `aip-chatbi.png` | ChatBI 条形图 |
 | `aip-chatbi-trend.png` | ChatBI 趋势折线 | `aip-chatbi-cross.png` | ChatBI 交叉热力表 |
 | `aip-logic-presets.png` | 工作流预设 | `aip-logic-zoom.png` | 工作流画布缩放 |
-| `doc-analysis.png` | 文档分析 | | |
+| `aip-logic-actions.png` | 工作流真实动作结果 | `doc-analysis.png` | 文档分析 |
 | `data-connections.png` | 数据连接 | `datasets.png` | 数据集 |
 | `lineage.png` | 数据血缘 | `approvals.png` | 审批中心 |
 | `audit.png` | 审计日志 | `control-panel.png` | 控制面板（已裁去敏感配置） |

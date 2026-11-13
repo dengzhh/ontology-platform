@@ -9,7 +9,7 @@
 [![React](https://img.shields.io/badge/React_18-TypeScript-61dafb.svg)]()
 [![Hono](https://img.shields.io/badge/Hono-API_server-e36002.svg)]()
 [![SQLite](https://img.shields.io/badge/SQLite-Drizzle_ORM-003b57.svg)]()
-[![Tests](https://img.shields.io/badge/smoke-177/177_passing-2ea44f.svg)]()
+[![Tests](https://img.shields.io/badge/smoke-183/183_passing-2ea44f.svg)]()
 
 **42 个应用 · 全栈真实落库 · 一条命令启动 · 零外部依赖**
 
@@ -106,7 +106,7 @@ node demo-data/load.mjs                 # 期望：通过 92/92
 npm run build             # 前端类型检查 + 产物构建（dist/）
 npm run typecheck:server  # 服务端类型检查
 npm run preview           # 本地预览构建产物
-node tests/smoke.mjs      # 全站 API 黑盒冒烟（177 项断言，零依赖）
+node tests/smoke.mjs      # 全站 API 黑盒冒烟（183 项断言，零依赖）
 node demo-data/stress.mjs # 10 万行压力基准（灌入 726ms / 列表 0.3ms，自动清理）
 ```
 
@@ -131,7 +131,7 @@ node demo-data/stress.mjs # 10 万行压力基准（灌入 726ms / 列表 0.3ms�
 | **知识** | 知识库（入库/分块/向量化）、知识检索（BM25+向量 RRF）、知识抽取（LLM 候选 → 审核 → 落地为本体类型） |
 | **分析** | 探索分析、联动分析、路径分析、地理空间、智能报告、智能表格（单元格写回本体 + 审计） |
 | **应用** | 应用搭建、自动化引擎、岗位工作区、应用市场 |
-| **AIP** | 工作流编排（可视化节点编排 + **6 个开箱即用预设工作流**：设备健康分诊/工单紧急分流/订单金额分级/文档归类/文档智能分析/LLM 归因，一键载入即可运行，离线模板不依赖 AI 网关）、智能体构建、**文档分析**（选文档→AI 分析→带上下文多轮追问，AI 网关失败保留草稿可重试）、模型管理、模型评估、开发者工具（API 密钥真实鉴权） |
+| **AIP** | 工作流编排（可视化节点编排 + undo/redo + 连线控制 + 画布缩放 + **6 个开箱即用预设工作流**：设备健康分诊/工单紧急分流/订单金额分级/文档归类/文档智能分析/LLM 归因；**预览运行 → 确认 → 真实落库**：生成工单对象/通知/待审批单，离线模板不依赖 AI 网关）、智能体构建、**文档分析**（选文档→AI 分析→带上下文多轮追问，AI 网关失败保留草稿可重试）、模型管理、模型评估、开发者工具（API 密钥真实鉴权） |
 | **治理** | 审批中心、审计日志、安全与标记（脱敏规则/敏感扫描/生命周期） |
 | **管理** | 用户与权限、实现进度、控制面板（SMTP/AI/嵌入/视觉配置 + 真实用量）、识别模板、部署发布（本地编排状态机） |
 
@@ -190,7 +190,7 @@ tests/ · demo-data/            # 冒烟/契约/清单/E2E 剧本/扫描素材 �
 
 | 资产 | 规模 | 说明 |
 |---|---|---|
-| `tests/smoke.mjs` | **177 项断言全绿** | 零依赖黑盒：登录 → 60+ 读端点 → 写闭环 → 权限 → 外部源 → ChatBI → 函数沙箱 → 分页/批量 |
+| `tests/smoke.mjs` | **183 项断言全绿** | 零依赖黑盒：登录 → 60+ 读端点 → 写闭环 → 权限 → 外部源 → ChatBI → 函数沙箱 → 分页/批量 |
 | `demo-data/load.mjs` | **92 项幂等装载** | 一键生成验证全部功能的数据集（含外部库构建） |
 | `demo-data/stress.mjs` | **10 万行基准** | 事务灌入 726ms、索引列表 0.3ms、count 5.4ms，自动清理 |
 | `demo-data/FEATURE-MATRIX.md` | 42 页矩阵 | 每页功能 ↔ 验证数据 ↔ 体验步骤 |
