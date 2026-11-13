@@ -130,10 +130,10 @@
 
 #### ④ 管道构建 `/data/pipelines`
 
-- **功能**：管道定义 CRUD（nodes/schedule/version/status）、结构校验、发布（版本+1）、运行与最近 10 次运行历史、知识管道指标。
-- **原理**：`server/routes/p10plus.ts:179-276`，落 `pipelines` + `pipeline_runs`；`validate` 纯结构检查（必须有 source 与 output/sink 节点）；`run` 真实执行程度是**扫描当前空间对象数**并写一条 `pipeline_runs`（`message:'扫描当前空间 N 个对象实例'`）。
-- **边界**：画布是**固定 7 节点 6 连线的结构示意**（页面反复标注）；运行不执行真实 ETL/转换节点；`schedule` 字段仅存储，无定时调度器；Git/PR 无关。
-- **验证**：smoke `POST /pipelines/:id/validate` / `run`。
+- **功能**：管道定义 CRUD（nodes/schedule/version/status）、**真实节点编辑画布**（渲染选中管道的真实 nodes；拖拽布局 / 连接模式建线 / 点连线删除 / undo-redo（Ctrl+Z）/ 滚轮缩放平移 / 添加删除节点，「保存布局」把坐标与连线随定义持久化）、结构校验、发布（版本+1）、运行与最近 10 次运行历史、知识管道指标。
+- **原理**：`server/routes/p10plus.ts:179-276`，列表返回每条管道的 `nodes` 全量；节点坐标/连线存于 `config.x/y/next`，随 `POST /pipelines` 持久化；`validate` 纯结构检查（必须有 source 与 output/sink 节点）；`run` 真实执行程度是**扫描当前空间对象数**并写一条 `pipeline_runs`。
+- **边界**：**运行不执行真实 ETL/转换节点**（画布编辑的是定义而非执行引擎）；`schedule` 字段仅存储，无定时调度器；节点连线为单 `next` + 顺序回退（无并行分支）。
+- **验证**：smoke `POST /pipelines/:id/validate` / `run`；浏览器实测添加节点→undo/redo→建线→保存→刷新布局仍在（7/7）；截图 `pipelines-editor.png`。
 
 #### ⑤ 代码仓库 `/data/code`
 
@@ -199,7 +199,7 @@
 
 #### ⑬ 流程编排 `/ontology/machinery`
 
-- **功能**：动作链列表（每个 `actionType` 即一条流程）、执行次数/待审批数/近期执行日志、选中流程的可视化执行画布。
+- **功能**：动作链列表（每个 `actionType` 即一条流程）、执行次数/待审批数/近期执行日志、选中流程的可视化执行画布（滚轮缩放 / 空白拖拽平移）。
 - **原理**：`p10plus.ts:146-176` 从 `actionTypes` + `actionLogs` 真实聚合 `execCount` / `pendingCount` / 最近 3 次执行；画布由选中动作链字段与近期日志生成。
 - **边界**：**只读观测 + 画布渲染**——「动作编排 / 步骤编辑暂未接入后端写接口，故不提供对应操作按钮」（`Machinery.tsx:261`）；不是跨动作 DAG 编排器。
 - **验证**：smoke `GET /p10plus/machinery`。
@@ -601,8 +601,9 @@ node tests/smoke.mjs     # 183 项黑盒断言
 | `aip-chatbi-trend.png` | ChatBI 趋势折线 | `aip-chatbi-cross.png` | ChatBI 交叉热力表 |
 | `aip-logic-presets.png` | 工作流预设 | `aip-logic-zoom.png` | 工作流画布缩放 |
 | `aip-logic-actions.png` | 工作流真实动作结果 | `doc-analysis.png` | 文档分析 |
+| `aip-logic-actions.png` | 工作流真实动作结果 | `doc-analysis.png` | 文档分析 |
 | `data-connections.png` | 数据连接 | `datasets.png` | 数据集 |
-| `lineage.png` | 数据血缘 | `approvals.png` | 审批中心 |
+| `pipelines-editor.png` | 管道节点编辑器 | `lineage.png` | 数据血缘 | `approvals.png` | 审批中心 |
 | `audit.png` | 审计日志 | `control-panel.png` | 控制面板（已裁去敏感配置） |
 | `users.png` | 用户与权限 | `workshop.png` | 应用搭建 |
 | `marketplace.png` | 应用市场 | | |

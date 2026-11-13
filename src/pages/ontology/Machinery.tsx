@@ -176,7 +176,8 @@ export default function Machinery() {
                 desc={flow.desc || `目标类型：${flow.targetTypeName}`}
                 actions={flow.needsApproval ? <Badge color="amber" dot>需审批</Badge> : <Badge color="green" dot>自动执行</Badge>}
               />
-              <FlowCanvas nodes={nodes} edges={edges} width={1100} height={220} />
+              <FlowCanvas nodes={nodes} edges={edges} width={1100} height={220} zoomable />
+              <div className="mt-1 text-[10px] text-slate-400">执行链观测画布（滚轮缩放 / 空白拖拽平移）；可编辑的节点编排请使用「工作流编排」</div>
               <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
                 {[
                   { label: '目标对象类型', value: flow.targetTypeName },

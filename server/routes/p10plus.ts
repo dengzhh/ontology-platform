@@ -193,7 +193,7 @@ p10plusRoutes.get('/pipelines', (c) => {
       time: new Date(r.createdAt).toLocaleString('zh-CN', { hour12: false }),
     }))
   return c.json({
-    pipelines: defs.map((d) => ({ id: d.id, name: d.name, desc: d.desc, schedule: d.schedule, status: d.status, version: d.version, nodeCount: (d.nodes as unknown[]).length })),
+    pipelines: defs.map((d) => ({ id: d.id, name: d.name, desc: d.desc, schedule: d.schedule, status: d.status, version: d.version, nodeCount: (d.nodes as unknown[]).length, nodes: d.nodes })),
     runs,
     knowledgePipeline: {
       docs: docs.length, chunks: chunks.length,
