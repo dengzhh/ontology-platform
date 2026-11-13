@@ -101,7 +101,7 @@ export const PAGE_STATUS: Record<string, PageStatusInfo> = {
   // 智能能力
   '/aip/logic': { phase: 'P6', status: 'live', note: '工作流服务端持久化（多工作流 CRUD）+ 逐步执行引擎（LLM/条件分支真实生效）' },
   '/aip/agents': { phase: 'P6', status: 'live', note: 'Agent CRUD+对话+工具真实执行+护栏生效（服务端）' },
-  '/aip/threads': { phase: 'P6', status: 'live', note: '文档任务流：选文档→LLM 分析→结果持久化' },
+  '/aip/threads': { phase: 'P6', status: 'live', note: '文档分析：选文档→AI 分析→带上下文多轮追问；网关失败保留草稿可重试' },
   '/aip/evals': { phase: 'P10', status: 'live', note: '评测结果/运行评测/评分全接真实 LLM' },
   '/aip/models': { phase: 'P10', status: 'live', note: '多模型注册 CRUD + 配额编目真实落库；AI 配置/连通测试/AI 回复次数用量真实；运行时仍用单一全局 AI 配置' },
   '/aip/developers': { phase: 'P10', status: 'live', note: 'API 密钥创建/删除 + 真实接入鉴权（read 限 GET、write/admin 全方法，lastUsedAt 更新）；端点/工具/AI 配置真实' },

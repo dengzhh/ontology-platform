@@ -310,7 +310,7 @@ cleanData()
   // 预设模板：产品内置、列表可见、离线确定性模板直接跑出结果
   const allWf = (await api('GET', '/api/logic/workflows')).data?.workflows ?? []
   const presets = allWf.filter((w) => w.preset)
-  ok('AIP Logic·预设模板库可见(5 个)', { ok: presets.length === 5, status: presets.length === 5 ? 200 : 500, data: {} }, `presets=${presets.length}`)
+  ok('AIP Logic·预设模板库可见(6 个)', { ok: presets.length === 6, status: presets.length === 6 ? 200 : 500, data: {} }, `presets=${presets.length}`)
 
   // 逐个运行 3 个离线模板（不依赖 AI 网关，确定性结果）
   const presetCases = [

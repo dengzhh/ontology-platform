@@ -290,10 +290,10 @@ export default function AipLogic() {
       <Card>
         <CardHeader
           title="常用工作流预设"
-          desc="开箱即用的模板：点击卡片即载入节点与示例输入，直接点「运行」即可看到真实结果；修改后保存会自动另存为副本，不影响模板本身"
-          actions={<Badge color="violet">{WORKFLOW_PRESETS.length} 个模板</Badge>}
+          desc="开箱即用的模板：点击卡片即载入节点与示例输入，直接点「运行」即可看到真实结果；需要带文档多轮对话请去「文档分析」页"
+          actions={<div className="flex items-center gap-2"><a href="/aip/threads" className="text-[11px] font-medium text-brand-600 hover:underline">去文档分析 →</a><Badge color="violet">{WORKFLOW_PRESETS.length} 个模板</Badge></div>}
         />
-        <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 xl:grid-cols-5">
+        <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 xl:grid-cols-6">
           {WORKFLOW_PRESETS.map((p) => (
             <button
               key={p.id}

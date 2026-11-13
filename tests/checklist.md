@@ -60,9 +60,9 @@
 ## AIP（6 页）
 
 - [ ] `/aip/logic` AIP Logic：保存多工作流 → 运行测试 → 「逐步执行记录」显示 LLM/条件分支结果
-- [ ] `/aip/agents` Agent Studio：Agent CRUD + 对话 + 工具真实执行 + 护栏
-- [ ] `/aip/threads` AIP Threads：选文档 → LLM 分析 → 结果持久化
-- [ ] `/aip/evals` AIP Evals：运行评测 / 评分接真实 LLM
+- [ ] `/aip/agents` 智能体构建：Agent CRUD + 对话 + 工具真实执行 + 护栏
+- [ ] `/aip/threads` 文档分析：选文档 → AI 分析 → 多轮追问 → 结果持久化；网关失败保留草稿可重试
+- [ ] `/aip/evals` 模型评估：运行评测 / 评分接真实 LLM
 - [ ] `/aip/models` 模型管理：已注册模型 CRUD；AI 配置/连通测试；AI 回复次数显示口径说明（非网关 token）
 - [ ] `/aip/developers` 开发者工具：API 密钥 Tab 新建密钥 → **明文仅弹层显示一次** + 复制 → 列表只有前缀；删除带确认
 

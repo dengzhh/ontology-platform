@@ -8,7 +8,7 @@ import { runAgentTools } from '../engine/agentTools'
 import { semanticGuard } from '../engine/semantic'
 import type { SessionUser } from '../../shared/types'
 
-/** 智能体 / 工作流 / 任务流 API（P6）：Agent CRUD + 工作流 CRUD + 执行 + 文档任务 */
+/** 智能体 / 工作流 / 文档分析 API（P6）：Agent CRUD + 工作流 CRUD + 执行 + 文档对话 */
 
 interface ToolDef { key: string; name: string; desc: string }
 interface Guardrail { maskSensitive: boolean; requireApprovalForActions: boolean }
@@ -179,7 +179,7 @@ aipRoutes.get('/agents/:id/messages', (c) => {
   })
 })
 
-/* ================ AI 任务流（文档任务） ================ */
+/* ================ 文档分析（文档任务） ================ */
 
 /** 文档任务列表 */
 aipRoutes.get('/threads', (c) => {
@@ -198,7 +198,17 @@ aipRoutes.get('/threads', (c) => {
   })
 })
 
-/** 创建文档任务并运行（真实 LLM） */
+/** 拼装文档上下文（供首次分析与多轮追问共用）：把所选文档正文汇总为可读文本 */
+function buildDocContext(spaceId: string, docIds: string[]): { content: string; titles: string[] } {
+  if (!docIds.length) return { content: '', titles: [] }
+  const docs = db.select().from(tables.documents).all().filter((d) => docIds.includes(d.id) && d.spaceId === spaceId)
+  return {
+    content: docs.map((d) => `《${d.title}》\n${d.content}`).join('\n\n---\n\n').slice(0, 5000),
+    titles: docs.map((d) => d.title),
+  }
+}
+
+/** 创建文档分析并运行（真实 LLM）；文档上下文以 system 消息持久化，供后续追问复用 */
 aipRoutes.post('/threads', async (c) => {
   const user = c.get('user')
   const space = c.get('space')
@@ -209,26 +219,85 @@ aipRoutes.post('/threads', async (c) => {
   const id = `TH-${now.toString(36).toUpperCase()}`
   db.insert(tables.aiConversations).values({ id, title: body.title.trim(), scene: 'thread', userId: user.id, spaceId: space.id, createdAt: now }).run()
 
-  // 拼接文档内容
-  let docContent = ''
-  if (body.documentIds?.length) {
-    const docs = db.select().from(tables.documents).all().filter((d) => body.documentIds!.includes(d.id) && d.spaceId === space.id)
-    docContent = docs.map((d) => `《${d.title}》\n${d.content}`).join('\n\n---\n\n')
-  }
-
-  const taskPrompt = `任务：${body.taskPrompt}\n\n${docContent ? `参考文档：\n${docContent.slice(0, 5000)}` : '（无参考文档）'}`
+  const doc = buildDocContext(space.id, body.documentIds ?? [])
+  const contextNote = doc.titles.length
+    ? `本分析引用的文档：${doc.titles.join('、')}\n\n文档内容：\n${doc.content}`
+    : '（本次分析未引用文档）'
+  // system 消息承载文档上下文，追问时按角色拼装进 prompt，保证多轮带得走
+  db.insert(tables.aiMessages).values({ id: `AM-${now.toString(36)}c`, conversationId: id, role: 'system', content: contextNote, createdAt: now - 2 }).run()
+  db.insert(tables.aiMessages).values({ id: `AM-${now.toString(36)}u`, conversationId: id, role: 'user', content: body.taskPrompt, createdAt: now - 1 }).run()
 
   try {
     const reply = await llmComplete(
       '你是企业文档分析助手。根据给定任务和文档内容，输出结构化的分析结果。使用简洁的中文，用标题和列表组织内容。',
-      taskPrompt,
+      `任务：${body.taskPrompt}\n\n参考文档：\n${contextNote}`,
     )
-    db.insert(tables.aiMessages).values({ id: `AM-${Date.now().toString(36)}t`, conversationId: id, role: 'assistant', content: reply, createdAt: Date.now() }).run()
-    db.insert(tables.aiMessages).values({ id: `AM-${Date.now().toString(36)}u`, conversationId: id, role: 'user', content: body.taskPrompt, createdAt: now }).run()
-    audit(user, '运行文档任务', body.title)
-    return c.json({ id, result: reply })
+    db.insert(tables.aiMessages).values({ id: `AM-${now.toString(36)}a`, conversationId: id, role: 'assistant', content: reply, createdAt: now }).run()
+    audit(user, '运行文档分析', body.title)
+    return c.json({ id, result: reply, documentTitles: doc.titles })
   } catch (e) {
-    return c.json({ error: `LLM 调用失败：${e instanceof Error ? e.message : '未知'}` }, 502)
+    // LLM 失败保留会话草稿（system 上下文 + 用户任务仍在），用户可稍后一键重试，不丢输入
+    return c.json({
+      id,
+      error: `AI 分析失败：${e instanceof Error ? e.message : '未知'}。任务已保留为草稿，可稍后重试`,
+      retryable: true,
+    }, 502)
+  }
+})
+
+/** 重试失败的分析：复用已持久化的文档上下文与用户任务，不要求用户重新填写 */
+aipRoutes.post('/threads/:id/retry', async (c) => {
+  const user = c.get('user')
+  const space = c.get('space')
+  const id = c.req.param('id') as string
+  const conv = db.select().from(tables.aiConversations).all().find((x) => x.id === id && x.spaceId === space.id && x.scene === 'thread')
+  if (!conv) return c.json({ error: '分析不存在' }, 404)
+  const msgs = db.select().from(tables.aiMessages).all().filter((m) => m.conversationId === id).sort((a, b) => a.createdAt - b.createdAt)
+  const context = msgs.find((m) => m.role === 'system')?.content ?? '（无文档上下文）'
+  const task = msgs.find((m) => m.role === 'user')?.content ?? ''
+  if (!task) return c.json({ error: '草稿缺少任务描述，无法重试' }, 400)
+  const now = Date.now()
+  try {
+    const reply = await llmComplete(
+      '你是企业文档分析助手。根据给定任务和文档内容，输出结构化的分析结果。使用简洁的中文，用标题和列表组织内容。',
+      `任务：${task}\n\n参考文档：\n${context}`,
+    )
+    db.insert(tables.aiMessages).values({ id: `AM-${now.toString(36)}a`, conversationId: id, role: 'assistant', content: reply, createdAt: now }).run()
+    audit(user, '重试文档分析', conv.title)
+    return c.json({ result: reply, documentTitles: context.startsWith('本分析引用的文档：') ? context.split('\n')[0].slice('本分析引用的文档：'.length).split('、') : [] })
+  } catch (e) {
+    return c.json({ error: `重试仍失败：${e instanceof Error ? e.message : '未知'}，草稿继续保留` }, 502)
+  }
+})
+
+/** 多轮追问：带着文档上下文 + 历史问答继续对话（结果同样持久化） */
+aipRoutes.post('/threads/:id/followup', async (c) => {
+  const user = c.get('user')
+  const space = c.get('space')
+  const id = c.req.param('id') as string
+  const body = await c.req.json<{ question: string }>()
+  if (!body.question?.trim()) return c.json({ error: '请输入追问内容' }, 400)
+  const conv = db.select().from(tables.aiConversations).all().find((x) => x.id === id && x.spaceId === space.id && x.scene === 'thread')
+  if (!conv) return c.json({ error: '分析不存在' }, 404)
+
+  const msgs = db.select().from(tables.aiMessages).all()
+    .filter((m) => m.conversationId === id)
+    .sort((a, b) => a.createdAt - b.createdAt)
+  const context = msgs.find((m) => m.role === 'system')?.content ?? '（无文档上下文）'
+  const history = msgs.filter((m) => m.role === 'user' || m.role === 'assistant')
+    .map((m) => `${m.role === 'user' ? '用户' : 'AI'}：${m.content}`).join('\n\n')
+  const now = Date.now()
+  try {
+    const reply = await llmComplete(
+      '你是企业文档分析助手。基于给定文档上下文与历史对话回答用户的追问；引用文档内容时注明出处，不确定就明确说明，不要编造。使用简洁中文。',
+      `文档上下文：\n${context}\n\n历史对话：\n${history}\n\n用户追问：${body.question.trim()}`,
+    )
+    db.insert(tables.aiMessages).values({ id: `AM-${now.toString(36)}u`, conversationId: id, role: 'user', content: body.question.trim(), createdAt: now }).run()
+    db.insert(tables.aiMessages).values({ id: `AM-${now.toString(36)}a`, conversationId: id, role: 'assistant', content: reply, createdAt: now + 1 }).run()
+    audit(user, '文档分析追问', conv.title)
+    return c.json({ result: reply })
+  } catch (e) {
+    return c.json({ error: `追问失败：${e instanceof Error ? e.message : '未知'}，可稍后重试` }, 502)
   }
 })
 
@@ -239,9 +308,14 @@ aipRoutes.get('/threads/:id', (c) => {
   const conv = db.select().from(tables.aiConversations).all().find((x) => x.id === id && x.spaceId === space.id)
   if (!conv) return c.json({ error: '任务不存在' }, 404)
   const msgs = db.select().from(tables.aiMessages).all().filter((m) => m.conversationId === id).sort((a, b) => a.createdAt - b.createdAt)
+  const docsLine = msgs.find((m) => m.role === 'system')?.content.split('\n')[0] ?? ''
   return c.json({
     thread: { id, title: conv.title, createdAt: new Date(conv.createdAt).toLocaleString('zh-CN', { hour12: false }) },
-    messages: msgs.map((m) => ({ role: m.role, content: m.content })),
+    documentTitles: docsLine.startsWith('本分析引用的文档：') ? docsLine.slice('本分析引用的文档：'.length).split('、') : [],
+    // 草稿态：AI 网关失败后仅保留用户任务，前端据此显示「重试」按钮
+    pendingRetry: !msgs.some((m) => m.role === 'assistant'),
+    // system 消息是内部文档上下文，不返回给前端展示
+    messages: msgs.filter((m) => m.role !== 'system').map((m) => ({ role: m.role, content: m.content })),
   })
 })
 

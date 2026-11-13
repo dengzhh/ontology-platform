@@ -98,6 +98,21 @@ export const WORKFLOW_PRESETS: WorkflowPreset[] = [
     ],
   },
   {
+    id: 'PRESET-DOC-ANALYSIS',
+    name: '文档智能分析',
+    desc: '把文档摘要交给 AI 提炼要点，含明确建议则自动输出报告，否则转人工复核；与「文档分析」页互补：这里适合可复用/可编排的一次性处理',
+    tag: '知识处理',
+    needsLlm: true,
+    sampleInput: '《设备维护手册》第 3 章：液压系统每 2000 小时更换油封 HS-2041-03；油温超过 55 摄氏度须检查冷却系统；建议每季度点检一次',
+    steps: [
+      { id: 's1', type: 'input', label: '输入文档摘要', outputFormat: '文档标题/正文摘要', x: 40, y: 60 },
+      { id: 's2', type: 'llm', label: 'AI 提炼要点', prompt: '从文档中提取关键事实、数值指标与处置建议，输出结构化清单，并明确标注「建议」段落', model: 'auto', x: 300, y: 60 },
+      { id: 's3', type: 'condition', label: '含明确建议？', condition: '包含 建议', x: 560, y: 60, nextYes: 's4', nextNo: 's5' },
+      OUT('s4', '输出分析报告', '结构化要点 + 建议清单', 820, 20),
+      OUT('s5', '人工复核', '待复核文档草稿', 820, 150),
+    ],
+  },
+  {
     id: 'PRESET-LLM-ANALYSIS',
     name: 'LLM 停机归因分析',
     desc: '调用平台已配置的 AI 模型分析设备故障原因并给出处置建议；网关不可用时自动降级为规则摘要',

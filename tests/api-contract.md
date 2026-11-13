@@ -84,9 +84,11 @@
   DELETE /agents/:id
   POST /agents/:id/chat
   GET /agents/:id/messages
-  GET /threads
-  POST /threads
-  GET /threads/:id
+  GET /threads                    # 文档分析列表
+  POST /threads                   # {title, taskPrompt, documentIds?} → {id, result, documentTitles}；LLM 失败返回 502 + {id, retryable:true}（草稿保留）
+  POST /threads/:id/followup      # {question} → {result}；带 system 文档上下文 + 历史问答，结果持久化
+  POST /threads/:id/retry         # 重试草稿（复用已存上下文/任务，无需重填）；成功出结果，失败仍明确报错
+  GET /threads/:id                # {thread, documentTitles, pendingRetry, messages}；system 上下文不返回前端
   DELETE /threads/:id
 
 ### /api/auth  (authRoutes)
@@ -159,7 +161,7 @@
   GET /search
 
 ### /api/logic  (logicRoutes)
-  GET /workflows                  # 返回 用户工作流 + 5 个内置预设（preset:true, sampleInput, tag, needsLlm）
+  GET /workflows                  # 返回 用户工作流 + 6 个内置预设（preset:true, sampleInput, tag, needsLlm）
   POST /workflows                 # 步骤类型 input|llm|condition|transform|output；transform 支持 extract(field)/keyword(words)/format
                                   # 校验：空节点/重复 id/非法类型/分支目标不存在 → 400；同名幂等；传预设 id 保存 → 自动另存副本（名称加「副本」，返回新 id）
   DELETE /workflows/:id

@@ -150,7 +150,7 @@ export default function AssistPanel() {
           'fusion': '智能表格', 'fusion 表格': '智能表格', 'workshop': '应用搭建', 'workshop 搭建': '应用搭建',
           'automate': '自动化引擎', 'automate 自动化': '自动化引擎', 'carbon': '岗位工作区', 'carbon 工作区': '岗位工作区',
           'marketplace': '应用市场', 'aip logic': '工作流编排', 'agent studio': '智能体构建',
-          'aip threads': 'AI 任务流', 'aip evals': '模型评估', 'apollo': '部署发布', 'apollo 部署': '部署发布',
+          'aip threads': '文档分析', 'aip evals': '模型评估', 'apollo': '部署发布', 'apollo 部署': '部署发布',
         }
         const norm = LEGACY_PAGE_NAMES[page.trim().toLowerCase()] ?? page
         const hit = ALL_NAV_ITEMS.find((i) => i.name === norm || i.path === norm || norm.includes(i.name))

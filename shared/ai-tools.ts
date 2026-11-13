@@ -212,7 +212,7 @@ export const NAV_HINTS: { path: string; name: string; keywords: string[] }[] = [
   { path: '/apps/marketplace', name: '应用市场', keywords: ['市场', 'marketplace'] },
   { path: '/aip/logic', name: '工作流编排', keywords: ['aip logic', 'llm工作流', '工作流编排'] },
   { path: '/aip/agents', name: '智能体构建', keywords: ['agent', '智能体', 'agent studio'] },
-  { path: '/aip/threads', name: 'AI 任务流', keywords: ['threads', 'aip threads'] },
+  { path: '/aip/threads', name: '文档分析', keywords: ['threads', 'aip threads'] },
   { path: '/aip/evals', name: '模型评估', keywords: ['evals', '评测', 'aip evals'] },
   { path: '/aip/models', name: '模型管理', keywords: ['模型', 'byom'] },
   { path: '/aip/developers', name: '开发者工具', keywords: ['开发者', 'osdk', 'mcp'] },

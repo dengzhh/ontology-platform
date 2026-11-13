@@ -339,7 +339,7 @@ async function main() {
     // 预设模板契约：内置可见 + 可直接运行（transform 本地确定性执行）
     const list = await req('GET', '/api/logic/workflows')
     const presets = (list.data?.workflows ?? []).filter((w) => w.preset)
-    log(presets.length === 5 && presets.every((p) => p.sampleInput && p.steps.length >= 4), 'GET /logic/workflows 内置 5 个预设模板（含示例输入）', presets.map((p) => p.name).join('、'))
+    log(presets.length === 6 && presets.every((p) => p.sampleInput && p.steps.length >= 4), 'GET /logic/workflows 内置 6 个预设模板（含示例输入）', presets.map((p) => p.name).join('、'))
     const runPreset = await req('POST', '/api/logic/workflows/PRESET-DEVICE-TRIAGE/run', { input: '设备 M-9 健康度 42，停机 12 小时' }, 200, 20000)
     const prSteps = (runPreset.data?.results ?? []).map((r) => r.step)
     log(runPreset.ok && prSteps.includes('转维修复核') && !prSteps.includes('自动归档') && (runPreset.data?.results ?? []).some((r) => r.type === 'transform'), '预设工作流直接运行（transform→condition 真实分流）', prSteps.join('→'))
@@ -348,6 +348,42 @@ async function main() {
     const savedId = savePreset.data?.id
     log(savePreset.ok && !!savedId && savedId !== 'PRESET-TICKET-ROUTE', '保存预设另存为副本（不覆盖内置模板）', `id=${savedId}`)
     if (savedId) created.push({ label: `工作流副本 ${savedId}`, cleanup: () => req('DELETE', `/api/logic/workflows/${savedId}`) })
+  }
+
+  // 2.11b 文档分析：改名后的对话式分析 + 多轮追问契约
+  {
+    // 校验：空标题/空任务 → 400，空追问 → 400
+    const bad = await req('POST', '/api/aip/threads', { title: '', taskPrompt: '' }, 400)
+    log(bad.ok, 'POST /aip/threads 空标题/任务返回 400', '')
+    const noQ = await req('POST', '/api/aip/threads/TH-NOPE/followup', { question: '' }, 400)
+    log(noQ.ok, 'POST /aip/threads/:id/followup 空追问返回 400', '')
+    const notFound = await req('POST', '/api/aip/threads/TH-NOPE/followup', { question: '继续' }, 404)
+    log(notFound.ok, '追问不存在的分析返回 404', '')
+    // 创建（依赖 LLM 网关；成功走完整对话闭环，失败应保留草稿并允许重试）
+    const made = await req('POST', '/api/aip/threads', { title: `${PREFIX}_文档分析`, taskPrompt: '列出设备维护手册的关键数值与建议' }, 200, 45000)
+    const tid = made.data?.id
+    if (tid) {
+      created.push({ label: `文档分析 ${tid}`, cleanup: () => req('DELETE', `/api/aip/threads/${tid}`) })
+      const d = await req('GET', `/api/aip/threads/${tid}`)
+      const msgs = d.data?.messages ?? []
+      log(d.ok && msgs.every((m) => m.role !== 'system') && typeof d.data?.pendingRetry === 'boolean', 'GET /aip/threads/:id 不暴露 system 上下文、返回草稿态标志', `msgs=${msgs.length} pending=${d.data?.pendingRetry}`)
+      if (made.ok && made.data?.result) {
+        log(msgs.length >= 2 && msgs[0].role === 'user' && msgs[1].role === 'assistant', 'POST /aip/threads 创建文档分析并返回结果（消息顺序正确）', `id=${tid}`)
+        const fu = await req('POST', `/api/aip/threads/${tid}/followup`, { question: '把建议按优先级排成列表' }, 200, 45000)
+        log(fu.ok && typeof fu.data?.result === 'string' && fu.data.result.length > 0, 'POST /aip/threads/:id/followup 多轮追问返回结果', fu.ok ? `len=${fu.data.result.length}` : `status=${fu.status}`)
+        if (fu.ok) {
+          const d2 = await req('GET', `/api/aip/threads/${tid}`)
+          log((d2.data?.messages ?? []).length >= msgs.length + 2, '追问后消息持久化（用户+AI 各增一条）', `msgs=${(d2.data?.messages ?? []).length}`)
+        }
+      } else {
+        log(made.status === 502 && made.data?.retryable === true, 'POST /aip/threads 网关失败保留草稿（retryable）', `status=${made.status}`)
+        log(d.data?.pendingRetry === true && msgs.length === 1 && msgs[0].role === 'user', '草稿详情：仅保留用户任务、pendingRetry=true', `msgs=${msgs.length}`)
+        const rt = await req('POST', `/api/aip/threads/${tid}/retry`, {}, 200, 45000)
+        log(rt.ok ? (typeof rt.data?.result === 'string' && rt.data.result.length > 0) : (rt.status === 502 && String(rt.data?.error ?? '').includes('草稿继续保留')), 'POST /aip/threads/:id/retry 草稿可重试（成功出结果或明确报错）', `status=${rt.status}`)
+      }
+    } else {
+      log(false, 'POST /aip/threads 创建请求失败', `status=${made.status}`)
+    }
   }
 
   // 2.12 识别模板（含字段映射，验证不清空）

@@ -122,7 +122,7 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { path: '/aip/logic', name: '工作流编排', icon: Sparkles, desc: '无代码编排 LLM 工作流：提示、工具与分支', benchmark: 'AI 工作流' },
       { path: '/aip/agents', name: '智能体构建', icon: Bot, desc: '构建可调用工具与检索的智能体', benchmark: '智能体构建' },
-      { path: '/aip/threads', name: 'AI 任务流', icon: MessagesSquare, desc: '面向文档与数据的免配置 AI 任务流', benchmark: 'AI 任务流' },
+      { path: '/aip/threads', name: '文档分析', icon: MessagesSquare, desc: '选择知识库文档进行 AI 分析，支持带上下文的多轮追问', benchmark: '文档分析' },
       { path: '/aip/evals', name: '模型评估', icon: TestTube2, desc: 'LLM 输出的测试用例评估与模型对比', benchmark: '模型评估' },
       { path: '/aip/models', name: '模型管理', icon: Cpu, desc: '多模型接入、注册与用量治理', benchmark: '模型接入' },
       { path: '/aip/developers', name: '开发者工具', icon: Terminal, desc: 'OSDK / Ontology MCP 示例与密钥管理', benchmark: '开发者生态' },
