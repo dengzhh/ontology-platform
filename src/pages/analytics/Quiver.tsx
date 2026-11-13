@@ -53,7 +53,7 @@ export default function Quiver() {
   return (
     <PageShell
       icon={LineChart}
-      title="Quiver 对象分析"
+      title="联动分析"
       subtitle="从业务对象出发的分析路径：搜索→选择→属性下钻→变更时间线"
       benchmark="联动分析"
       features={['对象搜索：跨类型关键词搜索', '属性下钻：选中对象显示全部属性与枚举徽章', '变更时间线：审计日志中的对象操作记录', '类型筛选：按对象类型过滤搜索结果']}

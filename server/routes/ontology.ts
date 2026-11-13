@@ -276,7 +276,7 @@ ontologyRoutes.post('/functions', async (c) => {
   if (db.select().from(tables.ontologyFunctions).all().some((f) => f.id === id && f.spaceId === space.id)) return c.json({ error: '函数已存在' }, 409)
   db.insert(tables.ontologyFunctions).values({
     id, name: body.name.trim(), desc: body.desc ?? '', lang: body.lang ?? 'TypeScript',
-    linkedTypeIds: body.linkedTypeIds ?? [], body: '// P6：可被 AIP 工具调用', spaceId: space.id, createdAt: Date.now(),
+    linkedTypeIds: body.linkedTypeIds ?? [], body: '// P6：可被 智能工具调用', spaceId: space.id, createdAt: Date.now(),
   }).run()
   audit(user, '新建函数', `${body.name}(${id})@${space.name}`)
   // 兼容旧行为：仅登记函数；若前端同时提交了可执行代码，顺带创建 v1 草稿并自动跑一次测试

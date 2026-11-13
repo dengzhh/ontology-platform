@@ -65,7 +65,7 @@ function defaultTitle(): string {
   return `月度运营报告 ${new Date().toLocaleDateString('zh-CN')}`
 }
 
-/** 反序列化随报告落库的 AIP 结果（JSON 或旧纯文本），用于载入时回显 */
+/** 反序列化随报告落库的 智能处理结果（JSON 或旧纯文本），用于载入时回显 */
 function parseAip(raw: string): AipData | null {
   if (!raw) return null
   try {
@@ -123,7 +123,7 @@ export default function NotepadPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [reportErr, setReportErr] = useState('')
 
-  /** 报告全文（纯由真实数据拼装），作为 AIP 写作助手的输入与默认保存正文 */
+  /** 报告全文（纯由真实数据拼装），作为 智能写作助手的输入与默认保存正文 */
   const reportText = useMemo(() => {
     if (!data) return ''
     const s = data.stats
@@ -152,7 +152,7 @@ export default function NotepadPage() {
     if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 
-  /** AIP 写作助手：接真实 LLM（POST /api/p10/notepad/aip），成功/失败均刷新数据 */
+  /** 智能写作助手：接真实 LLM（POST /api/p10/notepad/aip），成功/失败均刷新数据 */
   async function runAip(action: AipAction, label: string) {
     if (!reportText.trim()) return
     setAipBusy(action)
@@ -173,7 +173,7 @@ export default function NotepadPage() {
     }
   }
 
-  /** 保存草稿 / 发布月报：POST /p10/notepad/reports，正文 + AIP 结果一起落库 */
+  /** 保存草稿 / 发布月报：POST /p10/notepad/reports，正文 + 智能处理结果一起落库 */
   async function saveReport(status: ReportStatus) {
     const content = currentContent
     if (!content.trim()) {
@@ -203,7 +203,7 @@ export default function NotepadPage() {
     }
   }
 
-  /** 载入历史报告详情：回填标题 / 正文 / AIP 结果 */
+  /** 载入历史报告详情：回填标题 / 正文 / 智能处理结果 */
   async function loadReport(id: string) {
     setLoadingId(id)
     setReportErr('')
@@ -214,7 +214,7 @@ export default function NotepadPage() {
       setTitle(r.report.title)
       setEditorContent(r.report.content)
       setAipResult(parseAip(r.report.aipResult))
-      notify('已载入报告，正文与 AIP 结果已回填')
+      notify('已载入报告，正文与 智能处理结果已回填')
     } catch (e) {
       const msg = e instanceof Error ? e.message : '报告载入失败'
       setReportErr(msg)
@@ -260,16 +260,16 @@ export default function NotepadPage() {
   return (
     <PageShell
       icon={ListTree}
-      title="Notepad 智能报告"
-      subtitle="富文本 + 嵌入式数据组件 + AIP 写作助手，报告随本体真实数据实时保鲜"
+      title="智能报告"
+      subtitle="富文本 + 嵌入式数据组件 + 智能写作助手，报告随本体真实数据实时保鲜"
       benchmark="智能报告"
       features={[
         '真实数据：统计/表格/图表/最近操作全部来自 /p10/notepad-data',
         '嵌入数据组件：对象类型分布表与实例分布图随本体数据实时刷新',
-        'AIP 写作助手：润色 / 续写 / 翻译接入真实 LLM（POST /p10/notepad/aip）',
+        '智能写作助手：润色 / 续写 / 翻译接入真实 LLM（POST /p10/notepad/aip）',
         '大纲导航：点击目录滚动定位到对应章节（scrollIntoView）',
         '报告真实存储：保存草稿 / 发布月报写入 /p10/notepad/reports（含审计留痕），支持列表 / 载入 / 删除',
-        '正文可编辑：默认由真实数据拼装，载入历史报告回填正文与 AIP 结果',
+        '正文可编辑：默认由真实数据拼装，载入历史报告回填正文与 智能处理结果',
       ]}
       actions={
         <>
@@ -311,7 +311,7 @@ export default function NotepadPage() {
 
             {/* 真实存储横幅 */}
             <div className="mt-2 rounded-lg border border-emerald-100 bg-emerald-50/60 px-3 py-2 text-[11px] leading-4 text-emerald-700">
-              草稿保存与月报发布已接入后端 /p10/notepad/reports（真实落库 + 审计留痕）；报告列表支持载入 / 编辑 / 删除，AIP 结果随报告保存并可回显。
+              草稿保存与月报发布已接入后端 /p10/notepad/reports（真实落库 + 审计留痕）；报告列表支持载入 / 编辑 / 删除，智能处理结果随报告保存并可回显。
             </div>
 
             {/* 报告正文编辑（标题 + 可编辑 textarea） */}
@@ -339,7 +339,7 @@ export default function NotepadPage() {
                 className="w-full resize-y rounded-lg border border-slate-200 bg-white px-3 py-2 text-[12px] leading-5 text-slate-700 outline-none focus:border-brand-400"
               />
               <p className="mt-1.5 text-[11px] leading-4 text-slate-500">
-                标题与正文均可编辑；默认正文由本页真实统计拼装，载入列表中的报告后回填其正文与 AIP 结果。下方统计卡、明细表与分布图仍为实时数据只读呈现。
+                标题与正文均可编辑；默认正文由本页真实统计拼装，载入列表中的报告后回填其正文与 智能处理结果。下方统计卡、明细表与分布图仍为实时数据只读呈现。
               </p>
             </div>
 
@@ -462,7 +462,7 @@ export default function NotepadPage() {
             </section>
           </Card>
 
-          {/* 右侧面板：报告列表 / 大纲 / AIP / 最近操作摘要 */}
+          {/* 右侧面板：报告列表 / 大纲 / 智能写作 / 最近操作摘要 */}
           <div className="flex flex-col gap-4">
             {/* 报告列表（真实存储：载入 / 编辑 / 删除） */}
             <Card className="h-fit">
@@ -536,7 +536,7 @@ export default function NotepadPage() {
 
             <Card className="h-fit">
               <CardHeader
-                title={<span className="flex items-center gap-1.5"><Sparkles size={13} className="text-violet-500" /> AIP 写作助手</span>}
+                title={<span className="flex items-center gap-1.5"><Sparkles size={13} className="text-violet-500" /> 智能写作助手</span>}
                 desc="基于全文真实数据 · 接入真实 LLM"
               />
               <div className="flex flex-wrap gap-2">
@@ -564,7 +564,7 @@ export default function NotepadPage() {
               )}
               {!aipResult && !aipErr && (
                 <div className="mt-2.5 rounded-lg bg-violet-50/60 p-2.5 text-[11px] leading-4 text-slate-500">
-                  AIP 依据本页真实统计与分布拼装全文后调用 LLM。未配置 AI 网关时会提示错误（不会伪造结果）。
+                  智能写作依据本页真实统计与分布拼装全文后调用 LLM。未配置 AI 网关时会提示错误（不会伪造结果）。
                 </div>
               )}
             </Card>

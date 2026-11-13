@@ -46,7 +46,7 @@ const Workshop = lazy(() => import('@/pages/apps/Workshop'))
 const Automate = lazy(() => import('@/pages/apps/Automate'))
 const Carbon = lazy(() => import('@/pages/apps/Carbon'))
 const Marketplace = lazy(() => import('@/pages/apps/Marketplace'))
-// AIP
+// 智能能力
 const AipLogic = lazy(() => import('@/pages/aip/Logic'))
 const AgentStudio = lazy(() => import('@/pages/aip/Agents'))
 const Threads = lazy(() => import('@/pages/aip/Threads'))

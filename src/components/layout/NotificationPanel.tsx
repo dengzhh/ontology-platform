@@ -74,7 +74,7 @@ export default function NotificationPanel() {
           )}
         </div>
         <div className="border-t border-slate-100 px-4 py-2 text-center text-[11px] text-slate-400">
-          通知由自动化规则与平台事件实时生成 · <Zap size={10} className="inline" /> Automate
+          通知由自动化规则与平台事件实时生成 · 自动化引擎
         </div>
       </div>
     </div>

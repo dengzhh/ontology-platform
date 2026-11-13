@@ -84,7 +84,7 @@ function seedOntology() {
   }
   const fns = [
     { name: 'computeOee', desc: '按设备与时间窗计算 OEE 综合效率', linked: ['device'] },
-    { name: 'churnProbability', desc: '客户流失概率评分（AIP 调用）', linked: ['customer'] },
+    { name: 'churnProbability', desc: '客户流失概率评分（智能调用）', linked: ['customer'] },
     { name: 'ticketSlaCheck', desc: '工单 SLA 达成检查并触发升级', linked: ['ticket'] },
   ]
   for (const f of fns) {

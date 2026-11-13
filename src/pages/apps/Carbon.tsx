@@ -91,7 +91,7 @@ export default function Carbon() {
   return (
     <PageShell
       icon={PanelsTopLeft}
-      title="Carbon 工作区"
+      title="岗位工作区"
       subtitle="把当前空间的 Workshop 看板聚合为一屏工作台 —— 真实应用、真实组件数、即时直达"
       benchmark="岗位工作区"
       features={[

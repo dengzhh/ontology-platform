@@ -158,7 +158,7 @@ export default function KnowledgeSearch() {
                 <div className="mt-3 space-y-1.5 text-[11px] text-slate-400">
                   <div className="flex items-center gap-1.5"><Link2 size={11} />片段 ID：<code className="font-mono">{selected.chunkId}</code></div>
                   <div>文档 ID：<code className="font-mono">{selected.docId}</code></div>
-                  <div>该片段可直接作为 AIP 助手回答的引用来源</div>
+                  <div>该片段可直接作为 智能助手回答的引用来源</div>
                 </div>
               </Card>
             ) : (

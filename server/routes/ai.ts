@@ -291,7 +291,7 @@ function buildSystemPrompt(user: SessionUser, page: string, spaceName: string, s
     '空间切换/导出 → 顶栏空间切换器、应用中心（/launcher）的导入/导出；也可让助手列出空间',
   ].join('\n')
   return [
-    '你是 OntoOS 本体智能平台的 AIP 助手，帮助用户操作平台、查询业务数据、完成管理任务。',
+    '你是 OntoOS 本体智能平台的 智能助手，帮助用户操作平台、查询业务数据、完成管理任务。',
     '',
     `当前用户：${user.name}（角色：${user.role.name}）。${spaceHint}用户当前所在页面：${page || '未知'}。`,
     '',
@@ -318,7 +318,7 @@ function buildSystemPrompt(user: SessionUser, page: string, spaceName: string, s
 /* ---------------- 系统用法帮助（LLM 与本地引擎共享，确定性前置拦截） ---------------- */
 
 const HELP_MAP: { re: RegExp; page: string; desc: string }[] = [
-  { re: /(可信业务定义|业务术语|认证指标|指标口径|术语表|同义词)/, page: '本体管理器', desc: '在「本体管理器 → 业务术语」Tab 新建术语、加同义词、认证口径；认证后 AIP 与 Agent 才会按此口径回答' },
+  { re: /(可信业务定义|业务术语|认证指标|指标口径|术语表|同义词)/, page: '本体管理器', desc: '在「本体管理器 → 业务术语」Tab 新建术语、加同义词、认证口径；认证后 智能助手与 Agent 才会按此口径回答' },
   { re: /(对象类型|链接类型|动作类型|本体建模|建模)/, page: '本体管理器', desc: '在「本体管理器」管理对象/链接/动作/函数/接口/业务术语六个 Tab' },
   { re: /(对象.*(增删改|录入|在哪)|对象实例|扫描录入)/, page: '对象浏览器', desc: '在「对象浏览器」增删改查实例，或用顶栏「扫描录入」拍照/上传文件识别入库' },
   { re: /(统计|图表|趋势|占比|分组分析|contour)/i, page: 'Contour 分析', desc: '在「Contour 分析」按维度分组聚合，也可直接在对话里问「按…统计」' },
@@ -328,7 +328,7 @@ const HELP_MAP: { re: RegExp; page: string; desc: string }[] = [
   { re: /(用户管理|邀请用户|角色|用户组)/, page: '用户与权限', desc: '在「用户与权限」管理用户/角色/用户组并发送邀请' },
   { re: /(实现进度|路线图|哪些功能)/, page: '实现进度', desc: '在「实现进度」查看 42 页状态与阶段进度' },
   { re: /(外部数据|数据连接|同步.*对象|表预览)/, page: '数据连接', desc: '在「数据连接」登记 SQLite/CSV/JSON 外部源，可真实探测、表预览、同步为对象' },
-  { re: /(工作流|AIP Logic|Agent|智能体|模型管理)/, page: 'AIP Logic', desc: '工作流在「AIP Logic」、Agent 在「Agent Studio」、模型在「模型管理」' },
+  { re: /(工作流|智能体|模型管理)/, page: '工作流编排', desc: '工作流在「工作流编排」、智能体在「智能体构建」、模型在「模型管理」' },
   { re: /(识别模板|提示词模板|字段映射)/, page: '识别模板', desc: '在「识别模板」自定义提示词、字段映射与自动匹配' },
 ]
 

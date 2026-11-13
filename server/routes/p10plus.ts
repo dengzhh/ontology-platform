@@ -45,7 +45,7 @@ p10plusRoutes.get('/rules', (c) => {
   })
 })
 
-/* ---------- AIP Evals（真实 LLM 评测） ---------- */
+/* ---------- 模型评估（真实 LLM 评测） ---------- */
 interface EvalCase { id: string; input: string; expected: string; category: string }
 
 p10plusRoutes.get('/evals', (c) => {

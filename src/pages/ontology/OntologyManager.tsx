@@ -113,7 +113,7 @@ const FN_TEMPLATE = `function main(input) {
 /** 版本/运行端点前缀（新路由由 index.ts 统一挂载，前端按字面路径调用） */
 const FN_API = '/fn'
 
-/** 新建函数表单：body 为逻辑描述（本地版本通过 Code Repositories 编写，P6 起可作为 AIP 工具被调用） */
+/** 新建函数表单：body 为逻辑描述（本地版本通过 Code Repositories 编写，P6 起可作为 智能工具被调用） */
 interface NewFunctionDraft {
   name: string
   desc: string
@@ -524,7 +524,7 @@ export default function OntologyManager() {
         '对象类型在线建模：属性（文本/数值/日期/布尔/枚举）、必填约束、主键、展示颜色',
         '链接类型：任意两端对象类型 + 四种基数（1:1 / 1:N / N:1 / N:N）',
         '动作类型：目标对象 + 参数 + 是否需审批（P4 动作引擎执行）',
-        '即时生效：新建类型立即可被对象查询与 AIP 助手检索到',
+        '即时生效：新建类型立即可被对象查询与智能助手检索到',
         '安全删除：存在实例或被引用的类型禁止删除，防止悬空数据',
         '接口契约：定义属性契约并绑定实现对象类型，一键校验符合性',
       ]}
@@ -961,7 +961,7 @@ export default function OntologyManager() {
           <div className="p-4">
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
               <div className="text-[12px] text-slate-500">
-                把业务口语/同义词映射到确定的本体属性或指标口径；<b>认证后</b> AIP 助手与 Agent 才会按此口径回答，数据类问题无覆盖时明确拒答而非猜测
+                把业务口语/同义词映射到确定的本体属性或指标口径；<b>认证后</b> 智能助手与 Agent 才会按此口径回答，数据类问题无覆盖时明确拒答而非猜测
               </div>
               <Btn size="sm" variant="primary" disabled={!canEdit} onClick={() => { setNewTerm(EMPTY_TERM); setNewTermOpen(true) }}><Plus size={13} /> 新建术语</Btn>
             </div>
@@ -1366,7 +1366,7 @@ export default function OntologyManager() {
               <Field label="定义说明"><Input value={newTerm.definition} onChange={(e) => setNewTerm({ ...newTerm, definition: e.target.value })} placeholder="一句话说明业务含义与统计范围" /></Field>
               <label className="flex items-center gap-2 rounded-lg border border-slate-200 p-2.5 text-[12px] text-slate-600">
                 <input type="checkbox" checked={newTerm.certified} onChange={(e) => setNewTerm({ ...newTerm, certified: e.target.checked })} className="h-4 w-4" />
-                立即认证（认证后 AIP 助手 / Agent 才会将其作为可信口径引用）
+                立即认证（认证后 智能助手 / Agent 才会将其作为可信口径引用）
               </label>
             </div>
             <div className="mt-5 flex justify-end gap-2">

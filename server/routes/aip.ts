@@ -8,7 +8,7 @@ import { runAgentTools } from '../engine/agentTools'
 import { semanticGuard } from '../engine/semantic'
 import type { SessionUser } from '../../shared/types'
 
-/** AIP Agent & Logic & Threads API（P6）：Agent CRUD + 工作流 CRUD + 执行 + 文档任务 */
+/** 智能体 / 工作流 / 任务流 API（P6）：Agent CRUD + 工作流 CRUD + 执行 + 文档任务 */
 
 interface ToolDef { key: string; name: string; desc: string }
 interface Guardrail { maskSensitive: boolean; requireApprovalForActions: boolean }
@@ -179,7 +179,7 @@ aipRoutes.get('/agents/:id/messages', (c) => {
   })
 })
 
-/* ================ AIP Threads（文档任务） ================ */
+/* ================ AI 任务流（文档任务） ================ */
 
 /** 文档任务列表 */
 aipRoutes.get('/threads', (c) => {

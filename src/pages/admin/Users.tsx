@@ -619,7 +619,7 @@ export default function UsersAdmin() {
             <div className="space-y-3.5">
               <Field label="名称" required><Input value={groupForm.name} onChange={(e) => setGroupForm({ ...groupForm, name: e.target.value })} placeholder="如：设备运维组" /></Field>
               <Field label="说明"><Input value={groupForm.desc} onChange={(e) => setGroupForm({ ...groupForm, desc: e.target.value })} placeholder="组的用途描述" /></Field>
-              <Field label="默认工作区" hint="成员登录后的默认落地页/工作区名称"><Input value={groupForm.defaultApp} onChange={(e) => setGroupForm({ ...groupForm, defaultApp: e.target.value })} placeholder="如：Carbon · 设备运维台" /></Field>
+              <Field label="默认工作区" hint="成员登录后的默认落地页/工作区名称"><Input value={groupForm.defaultApp} onChange={(e) => setGroupForm({ ...groupForm, defaultApp: e.target.value })} placeholder="如：设备运维工作台" /></Field>
             </div>
             <div className="mt-5 flex justify-end gap-2">
               <Btn onClick={closeGroupModal}>取消</Btn>

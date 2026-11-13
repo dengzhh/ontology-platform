@@ -30,11 +30,11 @@ export const PHASES: { id: string; name: string; goal: string }[] = [
   { id: 'P3.5', name: '多空间架构', goal: '组织/个人/家庭多本体空间隔离 + 模板包 + 空间导入导出' },
   { id: 'P4', name: '动作·审批·审计', goal: '动作执行引擎、审批流转、全量审计留痕，AI 助手可执行动作' },
   { id: 'P5', name: '知识层', goal: '文档入库、分块向量化、混合检索、抽取反哺本体' },
-  { id: 'P6', name: 'AI 能力', goal: '可配置 LLM 网关、AIP 助手真实对话与工具调用' },
+  { id: 'P6', name: 'AI 能力', goal: '可配置 LLM 网关、智能助手真实对话与工具调用' },
   { id: 'P7', name: '自动化与通知', goal: '规则引擎触发通知与动作，通知中心真数据' },
-  { id: 'P8', name: 'Workshop', goal: '应用搭建持久化，组件绑定真实对象集' },
+  { id: 'P8', name: '应用搭建', goal: '应用搭建持久化，组件绑定真实对象集' },
   { id: 'P9', name: '看板与基础分析', goal: '仪表盘与核心分析页改为真实数据聚合' },
-  { id: 'P10', name: '长尾增强', goal: '数据接入层/Carbon/Marketplace/Evals/Models/Developers/Security 等逐页接真' },
+  { id: 'P10', name: '长尾增强', goal: '数据接入层/岗位工作区/应用市场/模型评估/模型管理/开发者工具/数据安全等逐页接真' },
 ]
 
 export interface PhaseProgress {
@@ -74,7 +74,7 @@ export const PAGE_STATUS: Record<string, PageStatusInfo> = {
   '/data/datasets': { phase: 'P10', status: 'live', note: '对象类型即数据集：列表/预览/健康/Schema 全真实数据' },
   '/data/lineage': { phase: 'P10', status: 'live', note: '四层血缘与影响分析来自真实类型/链接/应用/文档；拓扑按节点数自动拉开行距 + 滚轮缩放/平移，解决节点重叠' },
   // 本体
-  '/ontology/manager': { phase: 'P2', status: 'live', note: '类型/链接/动作/函数 CRUD 真实；接口 Tab 完整 CRUD + 契约属性 + 符合性校验；业务术语 Tab：同义词/认证指标/口径解析，AIP 与 Agent 按认证口径回答、无覆盖明确拒答' },
+  '/ontology/manager': { phase: 'P2', status: 'live', note: '类型/链接/动作/函数 CRUD 真实；接口 Tab 完整 CRUD + 契约属性 + 符合性校验；业务术语 Tab：同义词/认证指标/口径解析，智能助手与 Agent 按认证口径回答、无覆盖明确拒答' },
   '/ontology/explorer': { phase: 'P3', status: 'live', note: '实例真实增删改查+动态列+关联管理+扫描录入，权限与校验完备' },
   '/ontology/views': { phase: 'P3', status: 'live', note: '跨类型全局搜索+卡片画廊+展示模板在线配置' },
   '/ontology/graph': { phase: 'P3', status: 'live', note: '真实对象/链接力导向图谱；节点详情改调 /objects/:id（全量属性+结构化关联）；graph 端点支持 type/keyword 服务端筛选' },
@@ -91,14 +91,14 @@ export const PAGE_STATUS: Record<string, PageStatusInfo> = {
   '/analytics/quiver': { phase: 'P9', status: 'live', note: '真实搜索/属性/时间线；类型筛选进 /objects/search?type= 服务端过滤，计数与列表一致' },
   '/analytics/insight': { phase: 'P10', status: 'live', note: '五步路径基于真实 device/ticket/employee 对象聚合，可重跑；汇总结论实时计算' },
   '/analytics/map': { phase: 'P10', status: 'live', note: '点位/流向/热力/统计联动全用真实对象数据' },
-  '/analytics/notepad': { phase: 'P10', status: 'live', note: '报告草稿/发布/列表/删除真实落库（含审计），AIP 结果随报告保存回显；AI 润色续写翻译真实 LLM' },
+  '/analytics/notepad': { phase: 'P10', status: 'live', note: '报告草稿/发布/列表/删除真实落库（含审计），智能处理结果随报告保存回显；AI 润色续写翻译真实 LLM' },
   '/analytics/fusion': { phase: 'P10', status: 'live', note: '表格来自真实 Factory 对象，双击单元格编辑 → PATCH 写回本体 + 审计留痕，异常行高亮' },
   // 应用
   '/apps/workshop': { phase: 'P8', status: 'live', note: '应用 CRUD+组件绑定真实对象，编辑态实时预览真实数据；无拖拽排序/变量绑定' },
   '/apps/automate': { phase: 'P7', status: 'live', note: '规则 CRUD+启停+编辑真实；condition 表达式提交、PATCH 落库、引擎真实解析参与命中判定' },
-  '/apps/carbon': { phase: 'P10', status: 'live', note: '工作区磁贴来自真实 Workshop 应用列表' },
+  '/apps/carbon': { phase: 'P10', status: 'live', note: '工作区磁贴来自真实运营应用列表' },
   '/apps/marketplace': { phase: 'P10', status: 'live', note: '目录遍历 PACKS 动态生成 + 真实安装计数；产品上架/下架真实落库；安装模板包真实执行；设置/版本升级仍待后续' },
-  // AIP
+  // 智能能力
   '/aip/logic': { phase: 'P6', status: 'live', note: '工作流服务端持久化（多工作流 CRUD）+ 逐步执行引擎（LLM/条件分支真实生效）' },
   '/aip/agents': { phase: 'P6', status: 'live', note: 'Agent CRUD+对话+工具真实执行+护栏生效（服务端）' },
   '/aip/threads': { phase: 'P6', status: 'live', note: '文档任务流：选文档→LLM 分析→结果持久化' },

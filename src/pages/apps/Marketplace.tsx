@@ -163,7 +163,7 @@ export default function Marketplace() {
   return (
     <PageShell
       icon={Store}
-      title="Marketplace 产品市场"
+      title="应用市场"
       subtitle="发现并安装真实本体模板包：安装即写入当前空间的对象类型、链接类型与动作类型"
       benchmark="应用市场"
       features={[

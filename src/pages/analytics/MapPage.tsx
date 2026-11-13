@@ -117,7 +117,7 @@ export default function MapPage() {
   return (
     <PageShell
       icon={Map}
-      title="Map 地理空间分析"
+      title="地理空间分析"
       subtitle="在地理画布中查看真实对象的城市分布、关联流向与异常点位 —— 数据来自 /p10plus/map"
       benchmark="地理空间"
       features={[

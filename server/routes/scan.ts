@@ -93,7 +93,7 @@ scanRoutes.get('/config', (c) => {
   const vVal = (vRow?.value ?? {}) as Record<string, unknown>
   return c.json({
     configured: !!cfg, model: cfg?.model ?? 'glm-4v-flash', endpoint: cfg?.endpoint ?? '',
-    // textModel 留空 = 跟随平台 AI 服务（与 AIP 助手同款模型）
+    // textModel 留空 = 跟随平台 AI 服务（与智能助手同款模型）
     textModel: String(vVal.textModel ?? ''),
     textEndpoint: String(vVal.textEndpoint ?? ''),
     textApiKeyConfigured: !!vVal.textApiKey,
@@ -300,7 +300,7 @@ scanRoutes.post('/recognize-text', async (c) => {
   let raw: string
   try {
     // 文本模型通道路由（优先级从高到低）：
-    //   ① textModel 留空        → 直接用平台 AI 服务（llmComplete，与 AIP 助手同款模型）
+    //   ① textModel 留空        → 直接用平台 AI 服务（llmComplete，与智能助手同款模型）
     //   ② textEndpoint 独立配置 → 用独立端点 + textModel（视觉/文本分属不同服务）
     //   ③ 否则                  → 与视觉模型共用端点 + textModel
     // 均失败再兜底平台 AI 网关

@@ -75,9 +75,9 @@ export const USERS: User[] = [
 ]
 
 export const USER_GROUPS = [
-  { name: '设备运维组', desc: '维修工程师集合，工单派单与知识沉淀的主要使用者', members: ['李维修', '赵保养', '孙调度'], app: 'Carbon · 设备运维台' },
-  { name: '销售运营组', desc: '订单与客户运营，使用销售工作台与客户分析', members: ['周计划', '吴采购'], app: 'Carbon · 销售运营台' },
-  { name: '数据分析组', desc: '分析师与数据工程师，负责看板、报告与建模', members: ['王质检', '陈星野'], app: 'Contour / Workshop' },
+  { name: '设备运维组', desc: '维修工程师集合，工单派单与知识沉淀的主要使用者', members: ['李维修', '赵保养', '孙调度'], app: '设备运维工作台' },
+  { name: '销售运营组', desc: '订单与客户运营，使用销售工作台与客户分析', members: ['周计划', '吴采购'], app: '销售运营工作台' },
+  { name: '数据分析组', desc: '分析师与数据工程师，负责看板、报告与建模', members: ['王质检', '陈星野'], app: '探索分析 / 应用搭建' },
 ]
 
 export function roleOf(id: string): Role {

@@ -41,7 +41,7 @@ export default function InsightPage() {
   return (
     <PageShell
       icon={Lightbulb}
-      title="Insight 分析路径"
+      title="路径分析"
       subtitle="多步筛选与跨对象关联自动汇总为结构化结论（真实本体对象）"
       benchmark="路径分析"
       features={[

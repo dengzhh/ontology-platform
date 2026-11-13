@@ -143,7 +143,17 @@ export default function AssistPanel() {
     try {
       if (name === 'navigate') {
         const page = String(args.page ?? '')
-        const hit = ALL_NAV_ITEMS.find((i) => i.name === page || i.path === page || page.includes(i.name))
+        // 旧英文名兼容：菜单统一改中文后，历史问法/模型输出仍带英文产品名时也能正确导航
+        const LEGACY_PAGE_NAMES: Record<string, string> = {
+          'contour': '探索分析', 'contour 分析': '探索分析', 'quiver': '联动分析', 'quiver 分析': '联动分析',
+          'insight': '路径分析', 'insight 路径': '路径分析', 'notepad': '智能报告', 'notepad 报告': '智能报告',
+          'fusion': '智能表格', 'fusion 表格': '智能表格', 'workshop': '应用搭建', 'workshop 搭建': '应用搭建',
+          'automate': '自动化引擎', 'automate 自动化': '自动化引擎', 'carbon': '岗位工作区', 'carbon 工作区': '岗位工作区',
+          'marketplace': '应用市场', 'aip logic': '工作流编排', 'agent studio': '智能体构建',
+          'aip threads': 'AI 任务流', 'aip evals': '模型评估', 'apollo': '部署发布', 'apollo 部署': '部署发布',
+        }
+        const norm = LEGACY_PAGE_NAMES[page.trim().toLowerCase()] ?? page
+        const hit = ALL_NAV_ITEMS.find((i) => i.name === norm || i.path === norm || norm.includes(i.name))
         if (!hit) return `未找到页面「${page}」`
         navigate(hit.path)
         return `已跳转到「${hit.name}」（${hit.path}）`
@@ -312,7 +322,7 @@ export default function AssistPanel() {
         if (action === 'create') {
           const nm = String(args.name ?? '').trim()
           if (!nm) return '新建场景需要 name 参数'
-          const r = await api<{ scenario: { id: string; name: string } }>(`${EX}/scenarios`, { method: 'POST', body: { name: nm, desc: '由 AIP 助手创建' } })
+          const r = await api<{ scenario: { id: string; name: string } }>(`${EX}/scenarios`, { method: 'POST', body: { name: nm, desc: '由智能助手创建' } })
           return `场景「${r.scenario.name}」已创建（id=${r.scenario.id}），可暂存变更后合并。`
         }
         if (action === 'merge' || action === 'discard') {
@@ -357,7 +367,7 @@ export default function AssistPanel() {
         if (action === 'deploy') {
           const v = String(args.version ?? '')
           if (!v) return 'deploy 需要 version 参数'
-          const r = await api<{ id: string; status: string }>('/apollo/deploy', { method: 'POST', body: { version: v, env: 'dev', message: '由 AIP 助手发起' } })
+          const r = await api<{ id: string; status: string }>('/apollo/deploy', { method: 'POST', body: { version: v, env: 'dev', message: '由智能助手发起' } })
           return `部署 ${v} 到 dev 成功（${r.status}，id=${r.id}）；如需发布到生产可说「晋升该版本」。`
         }
         const id = String(args.id ?? '')
@@ -402,7 +412,7 @@ export default function AssistPanel() {
         const id = String(args.id ?? '')
         if (!id) return `${action} 需要审批单 id，可先 list 取`
         const decision = action === 'approve' ? 'approve' : 'reject'
-        const r = await api<{ status: string; result?: unknown }>(`/actions/approvals/${id}/decide`, { method: 'POST', body: { decision, comment: '由 AIP 助手处理' } })
+        const r = await api<{ status: string; result?: unknown }>(`/actions/approvals/${id}/decide`, { method: 'POST', body: { decision, comment: '由智能助手处理' } })
         return `审批单 ${id} 已${decision === 'approve' ? '通过' : '驳回'}（${r.status}），动作${decision === 'approve' ? '已写回' : '已关闭'}并留痕。`
       }
       if (name === 'space_action') {
@@ -545,7 +555,7 @@ export default function AssistPanel() {
               <Bot size={16} />
             </div>
             <div>
-              <div className="text-sm font-bold text-slate-900">AIP 助手</div>
+              <div className="text-sm font-bold text-slate-900">智能助手</div>
               <div className="flex items-center gap-1.5 text-[10px] text-slate-400">
                 对话式操作平台 · 查询 · 执行
                 <select
@@ -780,7 +790,7 @@ export default function AssistPanel() {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter' && !e.nativeEvent.isComposing) send() }}
-              placeholder={engine?.configured ? '向 AIP 助手提问或下达指令…' : '试试：打开 审批中心 / 查询设备 / 平台有哪些用户'}
+              placeholder={engine?.configured ? '向智能助手提问或下达指令…' : '试试：打开 审批中心 / 查询设备 / 平台有哪些用户'}
               className="flex-1 bg-transparent text-[13px] text-slate-800 placeholder:text-slate-400 focus:outline-none"
             />
             <button onClick={() => send()} disabled={busy || !input.trim()} className="flex h-7 w-7 items-center justify-center rounded-lg bg-brand-600 text-white disabled:opacity-40">

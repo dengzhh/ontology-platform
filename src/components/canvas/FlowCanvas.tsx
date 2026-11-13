@@ -37,7 +37,7 @@ const STATUS_COLOR: Record<FlowStatus, string> = {
 
 /**
  * 通用流程画布（SVG）：节点卡片 + 贝塞尔连线。
- * 用于管道构建 / AIP Logic / 血缘 / 流程编排等页面。
+ * 用于管道构建 / 工作流编排 / 血缘 / 流程编排等页面。
  * 可选交互（不传则纯展示，向后兼容）：selectedId 高亮选中、onNodeClick 点击选中、onNodeMove 拖拽位移。
  */
 export default function FlowCanvas({

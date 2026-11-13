@@ -54,7 +54,7 @@ function ConfirmModal({ title, desc, onCancel, onConfirm, children }: { title: s
   )
 }
 
-/** AIP Logic：工作流可视化编排（节点可点选编辑/拖拽/排序/复制/连线）+ 服务端持久化 + 真实分支执行引擎 */
+/** 工作流编排：工作流可视化编排（节点可点选编辑/拖拽/排序/复制/连线）+ 服务端持久化 + 真实分支执行引擎 */
 export default function AipLogic() {
   const wfQ = useApi<{ workflows: Workflow[] }>('/logic/workflows')
   const workflows = wfQ.data?.workflows ?? []
@@ -255,7 +255,7 @@ export default function AipLogic() {
   return (
     <PageShell
       icon={Sparkles}
-      title="AIP Logic 工作流编排"
+      title="工作流编排"
       subtitle="可视化编排 LLM 工作流：点击节点编辑、拖拽布局、调整顺序与分支连线，可测试运行"
       benchmark="AI 工作流"
       features={[

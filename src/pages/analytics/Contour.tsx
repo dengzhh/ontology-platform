@@ -64,7 +64,7 @@ export default function Contour() {
   return (
     <PageShell
       icon={BarChart3}
-      title="Contour 数据分析"
+      title="探索分析"
       subtitle="按字段分组聚合分析真实对象数据 —— 维度选择→分组统计→图表联动"
       benchmark="探索分析"
       features={[

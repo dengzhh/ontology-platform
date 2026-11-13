@@ -135,7 +135,7 @@ export default function Automate() {
   return (
     <PageShell
       icon={Zap}
-      title="Automate 自动化"
+      title="自动化引擎"
       subtitle="对象变更与阈值规则驱动通知、动作执行与暂存审批 —— 与顶栏通知中心联动"
       benchmark="自动化引擎"
       features={[

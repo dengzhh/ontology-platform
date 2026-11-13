@@ -168,7 +168,7 @@ export default function DevelopersPage() {
       features={[
         '服务端点：REST / AI Chat / 对象查询 / 知识检索的实时地址与鉴权方式',
         'AI 配置：当前平台 AI 服务端点与模型，随配置真实变化',
-        '工具清单：AIP 助手可调用的真实工具及其参数',
+        '工具清单：智能助手可调用的真实工具及其参数',
         'API 密钥：真实创建 / 删除，明文仅创建时展示一次、列表不回显',
         '端点复制：拼接站点源生成完整地址，一键写入系统剪贴板',
       ]}
@@ -254,7 +254,7 @@ export default function DevelopersPage() {
           {tab === 'tools' && (
             <Card>
               <CardHeader
-                title={<span className="flex items-center gap-1.5"><Wrench size={14} className="text-brand-600" /> AIP 可调用工具</span>}
+                title={<span className="flex items-center gap-1.5"><Wrench size={14} className="text-brand-600" /> 智能助手可调用工具</span>}
                 desc="助手可调用的真实工具清单及入参说明"
                 actions={<Badge color="violet">{tools.length} 个工具</Badge>}
               />
@@ -269,7 +269,7 @@ export default function DevelopersPage() {
                 rowKey={(r) => r.name}
               />
               <div className="mt-3 flex items-center gap-2 rounded-lg border border-dashed border-slate-200 p-3 text-xs text-slate-400">
-                <ShieldAlert size={14} /> 工具由 AIP 助手按最小权限原则调用，涉及写操作的动作会按平台审批规则执行。
+                <ShieldAlert size={14} /> 工具由智能助手按最小权限原则调用，涉及写操作的动作会按平台审批规则执行。
               </div>
             </Card>
           )}

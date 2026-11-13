@@ -16,7 +16,7 @@ export interface GanttRow {
   bars: GanttBar[]
 }
 
-/** 甘特图视图：用于调度优化、Apollo 发布计划等 */
+/** 甘特图视图：用于调度优化、部署发布计划等 */
 export default function GanttView({ rows, timeline, className }: { rows: GanttRow[]; timeline: string[]; className?: string }) {
   return (
     <div className={cn('overflow-hidden rounded-lg border border-slate-200 bg-white', className)}>

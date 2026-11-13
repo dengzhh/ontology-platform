@@ -7,7 +7,7 @@ import { llmComplete } from './ai'
 import { WORKFLOW_PRESETS, PRESET_IDS, findPreset, type WorkflowStep } from '../../shared/workflowTemplates'
 import type { SessionUser } from '../../shared/types'
 
-/** AIP Logic 工作流持久化 + 预设模板 + 真实分支执行引擎 */
+/** 工作流编排 工作流持久化 + 预设模板 + 真实分支执行引擎 */
 
 interface Workflow { id: string; name: string; steps: WorkflowStep[]; updatedAt: number; desc?: string; tag?: string; sampleInput?: string; needsLlm?: boolean; preset?: boolean }
 

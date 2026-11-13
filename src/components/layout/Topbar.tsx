@@ -314,13 +314,13 @@ export default function Topbar() {
           <Camera size={14} className="text-brand-500" />
           <span className="hidden lg:inline">扫描录入</span>
         </button>
-        {/* AIP Assist */}
+        {/* 智能助手 */}
         <button
           onClick={() => setAssistOpen(true)}
           className="mr-1 flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-brand-500 to-violet-500 px-3 py-1.5 text-xs font-semibold text-white shadow-card transition-opacity hover:opacity-90"
         >
           <Sparkles size={14} />
-          AIP 助手
+          智能助手
         </button>
         {/* 通知 */}
         <button onClick={() => setNotifOpen(true)} title={unread ? `${unread} 条未读通知` : '通知中心'} className="relative flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-50">

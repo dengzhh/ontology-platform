@@ -158,7 +158,7 @@ p10Routes.get('/developers', (c) => {
   })
 })
 
-/* ---------- Notepad AIP 写作助手（真实 LLM；追加端点，不改动上方已有代码） ---------- */
+/* ---------- Notepad 智能写作助手（真实 LLM；追加端点，不改动上方已有代码） ---------- */
 p10Routes.post('/notepad/aip', async (c) => {
   const body = await c.req.json<{ action?: string; text?: string }>().catch(() => ({} as { action?: string; text?: string }))
   const action = body.action ?? ''

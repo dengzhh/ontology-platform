@@ -1,4 +1,4 @@
-/** AIP Logic 预设工作流模板（前后端共享）：开箱即用的一键可跑模板 */
+/** 工作流编排 预设工作流模板（前后端共享）：开箱即用的一键可跑模板 */
 
 export interface WorkflowStep {
   id: string

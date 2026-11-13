@@ -141,7 +141,7 @@ function AiCard() {
     setBusy(true); setMsg('')
     try {
       await api('/ai/config', { method: 'PUT', body: form })
-      setMsg('✓ AI 服务配置已保存，AIP 助手将使用真实大模型')
+      setMsg('✓ AI 服务配置已保存，智能助手将使用真实大模型')
       // 保存后清空密码占位并保留 endpoint/model，避免看起来像没配过
       setForm((f) => ({ ...f, apiKey: '' }))
       cfgQ.reload()
@@ -163,8 +163,8 @@ function AiCard() {
   return (
     <Card>
       <CardHeader
-        title={<span className="flex items-center gap-2"><Sparkles size={15} className="text-violet-600" /> AI 服务（AIP 助手）</span>}
-        desc="OpenAI 兼容接口（Endpoint + Key + 模型），配置后 AIP 助手支持自然语言对话与工具调用；未配置时使用本地意图引擎"
+        title={<span className="flex items-center gap-2"><Sparkles size={15} className="text-violet-600" /> AI 服务（智能助手）</span>}
+        desc="OpenAI 兼容接口（Endpoint + Key + 模型），配置后 智能助手支持自然语言对话与工具调用；未配置时使用本地意图引擎"
         actions={configured ? <Badge color="green" dot>已配置</Badge> : <Badge color="amber" dot>本地引擎</Badge>}
       />
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
@@ -328,7 +328,7 @@ function VisionCard() {
         <Field label="视觉模型" required hint="如 glm-4v-flash / qwen2.5vl:7b">
           <Input value={model} onChange={(e) => setModel(e.target.value)} />
         </Field>
-        <Field label="文本提取模型（可选）" hint="留空 = 跟随 AI 服务（与 AIP 助手同款模型）；填写则按下方端点路由，如 glm-5.3-flash / qwen2.5:7b">
+        <Field label="文本提取模型（可选）" hint="留空 = 跟随 AI 服务（与智能助手同款模型）；填写则按下方端点路由，如 glm-5.3-flash / qwen2.5:7b">
           <Input value={textModel} onChange={(e) => setTextModel(e.target.value)} />
         </Field>
         <Field label="专属端点（可选）" hint="留空用 AI 网关端点；本地部署填 Ollama/vLLM 地址">
@@ -371,10 +371,10 @@ interface FeatureSwitch {
 }
 
 const FEATURE_SWITCHES: FeatureSwitch[] = [
-  { key: 'aip-logic', name: 'AIP Logic', desc: '无代码 LLM 工作流编排：提示、工具调用与分支', icon: Sparkles, on: true },
-  { key: 'agent-studio', name: 'Agent Studio', desc: '构建可调用本体工具与检索的智能体', icon: Bot, on: true },
+  { key: 'aip-logic', name: '工作流编排', desc: '无代码 LLM 工作流编排：提示、工具调用与分支', icon: Sparkles, on: true },
+  { key: 'agent-studio', name: '智能体构建', desc: '构建可调用本体工具与检索的智能体', icon: Bot, on: true },
   { key: 'workshop', name: 'Workshop', desc: '拖拽组件搭建运营应用并发布', icon: MousePointerClick, on: true },
-  { key: 'marketplace', name: 'Marketplace', desc: '产品市场：安装与发布可复用应用', icon: Store, on: false },
+  { key: 'marketplace', name: '应用市场', desc: '产品市场：安装与发布可复用应用', icon: Store, on: false },
   { key: 'sensitive-scan', name: '敏感数据扫描', desc: '定期扫描数据表敏感字段并提醒处置', icon: ShieldCheck, on: true },
 ]
 
@@ -411,7 +411,7 @@ export default function ControlPanelPage() {
       subtitle="平台功能开关、用量配额与服务可观测性的一站式管理"
       benchmark="平台运维"
       features={[
-        '功能开关：按租户粒度启停 AIP Logic、Agent Studio 等平台能力，立即生效',
+        '功能开关：按租户粒度启停工作流编排、智能体构建等平台能力，立即生效',
         '用量监控：LLM Token、对象存储、函数计算的配额消耗与近 14 天趋势',
         '阈值预警：配额消耗超过 80% 自动通知平台管理员并支持临时扩容',
         '可观测性：核心服务健康状态与 P99 延迟实时总览',

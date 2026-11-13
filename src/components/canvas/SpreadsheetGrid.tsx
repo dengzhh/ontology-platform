@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { cn } from '@/lib/utils'
 
-/** 电子表格视图：列字母表头 + 行号 + 公式栏，用于 Fusion 等页面。
+/** 电子表格视图：列字母表头 + 行号 + 公式栏，用于智能表格等页面。
  *  传入 onCellEdit 后双击单元格可编辑（真实双向同步场景）。 */
 export default function SpreadsheetGrid({
   headers,

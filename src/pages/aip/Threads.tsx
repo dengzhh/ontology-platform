@@ -16,7 +16,7 @@ interface ThreadDetail {
   messages: { role: string; content: string }[]
 }
 
-/** AIP Threads（P6 真实）：文档任务流 —— 选文档→写任务→LLM 运行→查看结果 */
+/** AI 任务流（P6 真实）：文档任务流 —— 选文档→写任务→LLM 运行→查看结果 */
 export default function Threads() {
   const q = useApi<ThreadsResp>('/aip/threads')
   const threads = q.data?.threads ?? []
@@ -70,7 +70,7 @@ export default function Threads() {
   return (
     <PageShell
       icon={MessagesSquare}
-      title="AIP Threads"
+      title="AI 任务流"
       subtitle="面向文档的 AI 任务流：选文档→写任务→LLM 分析→查看结果"
       benchmark="AI 任务流"
       features={[

@@ -12,10 +12,10 @@ export const APPROVALS = [
 export const AUDIT_EVENTS = [
   { time: '2026-11-03 09:41:22', actor: '李维修', action: '执行动作 · 创建工单', target: 'GD-2291 / F2-IM-2041', result: '成功', ip: '10.8.12.66' },
   { time: '2026-11-03 09:12:05', actor: '周计划', action: '发起动作 · 批量关闭工单（127）', target: '维修工单', result: '待审批', ip: '10.8.20.31' },
-  { time: '2026-11-03 08:55:40', actor: 'AIP·质量异常检测员', action: 'Agent 运行 · 批次 B-2026-1102 分析', target: '产品批次', result: '成功', ip: '内部' },
+  { time: '2026-11-03 08:55:40', actor: '智能质量异常检测员', action: 'Agent 运行 · 批次 B-2026-1102 分析', target: '产品批次', result: '成功', ip: '内部' },
   { time: '2026-11-03 08:30:00', actor: '系统', action: '管道调度 · ERP 订单同步', target: 'pipeline_erp_order', result: '成功', ip: '内部' },
   { time: '2026-11-03 08:02:17', actor: '王质检', action: '查看敏感属性 · 客户.联系人手机', target: 'C-10001', result: 'Checkpoint 已留痕', ip: '10.8.9.14' },
-  { time: '2026-11-02 22:41:03', actor: 'AIP·质量异常检测员', action: '触发通知 · 疑似异常批次', target: 'B-2026-1102', result: '成功', ip: '内部' },
+  { time: '2026-11-02 22:41:03', actor: '智能质量异常检测员', action: '触发通知 · 疑似异常批次', target: 'B-2026-1102', result: '成功', ip: '内部' },
   { time: '2026-11-02 16:40:11', actor: '李维修', action: '参数变更申请 · 设备健康阈值', target: 'NB-AC-0009', result: '待审批', ip: '10.8.12.66' },
   { time: '2026-11-02 14:20:45', actor: '郑审计', action: '查询审计日志', target: 'audit.3', result: '成功', ip: '10.8.3.7' },
 ]

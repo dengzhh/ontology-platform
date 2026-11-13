@@ -190,7 +190,7 @@ export default function ModelsPage() {
   return (
     <PageShell
       icon={Cpu}
-      title="模型管理 BYOM"
+      title="模型管理"
       subtitle="统一接入自建与第三方大模型：读取真实 AI 服务配置、真实调用量与已注册模型编目"
       benchmark="模型接入"
       features={[

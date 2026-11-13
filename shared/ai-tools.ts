@@ -1,4 +1,4 @@
-/** AIP 助手工具契约：前后端共享（前端执行，服务端生成/校验） */
+/** 智能助手工具契约：前后端共享（前端执行，服务端生成/校验） */
 
 export interface AiToolDef {
   name: string
@@ -200,20 +200,20 @@ export const NAV_HINTS: { path: string; name: string; keywords: string[] }[] = [
   { path: '/knowledge/library', name: '知识库', keywords: ['知识库', '文档库'] },
   { path: '/knowledge/search', name: '知识检索', keywords: ['知识检索', '搜知识'] },
   { path: '/knowledge/extract', name: '知识抽取', keywords: ['知识抽取'] },
-  { path: '/analytics/contour', name: 'Contour 分析', keywords: ['contour', '数据分析'] },
-  { path: '/analytics/quiver', name: 'Quiver 分析', keywords: ['quiver'] },
-  { path: '/analytics/insight', name: 'Insight 路径', keywords: ['insight'] },
+  { path: '/analytics/contour', name: '探索分析', keywords: ['contour', '数据分析'] },
+  { path: '/analytics/quiver', name: '联动分析', keywords: ['quiver'] },
+  { path: '/analytics/insight', name: '路径分析', keywords: ['insight'] },
   { path: '/analytics/map', name: '地理空间', keywords: ['地图', '地理'] },
-  { path: '/analytics/notepad', name: 'Notepad 报告', keywords: ['报告', 'notepad'] },
-  { path: '/analytics/fusion', name: 'Fusion 表格', keywords: ['fusion', '电子表格'] },
-  { path: '/apps/workshop', name: 'Workshop 搭建', keywords: ['workshop', '应用搭建', '搭建器'] },
-  { path: '/apps/automate', name: 'Automate 自动化', keywords: ['自动化', 'automate'] },
-  { path: '/apps/carbon', name: 'Carbon 工作区', keywords: ['工作区', 'carbon'] },
-  { path: '/apps/marketplace', name: 'Marketplace', keywords: ['市场', 'marketplace'] },
-  { path: '/aip/logic', name: 'AIP Logic', keywords: ['aip logic', 'llm工作流', '工作流编排'] },
-  { path: '/aip/agents', name: 'Agent Studio', keywords: ['agent', '智能体'] },
-  { path: '/aip/threads', name: 'AIP Threads', keywords: ['threads'] },
-  { path: '/aip/evals', name: 'AIP Evals', keywords: ['evals', '评测'] },
+  { path: '/analytics/notepad', name: '智能报告', keywords: ['报告', 'notepad'] },
+  { path: '/analytics/fusion', name: '智能表格', keywords: ['fusion', '电子表格'] },
+  { path: '/apps/workshop', name: '应用搭建', keywords: ['workshop', '应用搭建', '搭建器'] },
+  { path: '/apps/automate', name: '自动化引擎', keywords: ['自动化', 'automate'] },
+  { path: '/apps/carbon', name: '岗位工作区', keywords: ['工作区', 'carbon'] },
+  { path: '/apps/marketplace', name: '应用市场', keywords: ['市场', 'marketplace'] },
+  { path: '/aip/logic', name: '工作流编排', keywords: ['aip logic', 'llm工作流', '工作流编排'] },
+  { path: '/aip/agents', name: '智能体构建', keywords: ['agent', '智能体', 'agent studio'] },
+  { path: '/aip/threads', name: 'AI 任务流', keywords: ['threads', 'aip threads'] },
+  { path: '/aip/evals', name: '模型评估', keywords: ['evals', '评测', 'aip evals'] },
   { path: '/aip/models', name: '模型管理', keywords: ['模型', 'byom'] },
   { path: '/aip/developers', name: '开发者工具', keywords: ['开发者', 'osdk', 'mcp'] },
   { path: '/gov/approvals', name: '审批中心', keywords: ['审批'] },
@@ -222,7 +222,7 @@ export const NAV_HINTS: { path: string; name: string; keywords: string[] }[] = [
   { path: '/admin/users', name: '用户与权限', keywords: ['用户管理', '用户与权限', '人员管理'] },
   { path: '/admin/roadmap', name: '实现进度', keywords: ['实现进度', '路线图', 'roadmap'] },
   { path: '/admin/control', name: '控制面板', keywords: ['控制面板', '系统设置'] },
-  { path: '/admin/apollo', name: 'Apollo 部署', keywords: ['部署', 'apollo'] },
+  { path: '/admin/apollo', name: '部署发布', keywords: ['部署', 'apollo'] },
 ]
 
 /** 对象类型中文别名 → typeId */

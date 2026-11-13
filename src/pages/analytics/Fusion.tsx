@@ -59,7 +59,7 @@ export default function FusionPage() {
   return (
     <PageShell
       icon={Table2}
-      title="Fusion 电子表格"
+      title="智能表格"
       subtitle="公式引用本体对象，表格单元格与本体双向同步（编辑即写回对象属性）"
       benchmark="智能表格"
       features={[

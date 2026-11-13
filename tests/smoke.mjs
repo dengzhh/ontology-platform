@@ -482,6 +482,10 @@ async function main() {
     const helpTools = (help.data?.toolCalls ?? []).map((x) => x.name)
     const isNav = helpTools.includes('navigate') && !helpTools.some((n) => ['analyze_objects', 'search_knowledge', 'query_objects'].includes(n))
     log(help.ok && isNav && /本体管理器/.test(String(help.data?.reply ?? '')), 'POST /ai/chat 系统用法类问题直达 navigate', `tools=${helpTools.join(',')}`)
+    // 回归：菜单全中文后，系统用法类问题应给出中文页面名（不再出现英文产品名）
+    const zhNav = await req('POST', '/api/ai/chat', { messages: [{ role: 'user', content: '工作流在哪儿配置' }] }, 200, 45000)
+    const zhReply = String(zhNav.data?.reply ?? '')
+    log(zhNav.ok && /工作流编排|工作流/.test(zhReply) && !/AIP Logic|Workshop|Contour/.test(zhReply), 'POST /ai/chat 中文统一后导航用语为中文', zhReply.slice(0, 60).replace(/\n/g, ' '))
     // 回归：新工具（排程/治理）的对话路由——问排程与扫描应命中对应工具而非瞎猜数据字段
     const sched = await req('POST', '/api/ai/chat', { messages: [{ role: 'user', content: '查看当前排程与利用率' }] }, 200, 45000)
     const schedTools = (sched.data?.toolCalls ?? []).map((x) => x.name)

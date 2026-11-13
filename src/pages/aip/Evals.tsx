@@ -39,7 +39,7 @@ const MODEL_PALETTE = ['#2563eb', '#8b5cf6', '#06b6d4', '#10b981', '#f59e0b', '#
 
 const blankCase = (): EvalCase => ({ id: `case-${Date.now()}-${Math.floor(Math.random() * 1000)}`, input: '', expected: '', category: '通用' })
 
-/** AIP Evals：真实 LLM 关键词重叠评分 */
+/** 模型评估：真实 LLM 关键词重叠评分 */
 export default function EvalsPage() {
   const q = useApi<EvalsResp>('/p10plus/evals')
   const results = q.data?.results ?? []
@@ -147,7 +147,7 @@ export default function EvalsPage() {
   return (
     <PageShell
       icon={FlaskConical}
-      title="AIP Evals 评测中心"
+      title="模型评估中心"
       subtitle="用真实 LLM 对测试用例做关键词重叠评分：输入用例→调用评测→查看得分与回归"
       benchmark="模型评估"
       features={[

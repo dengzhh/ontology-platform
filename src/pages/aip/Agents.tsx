@@ -35,7 +35,7 @@ const AVAILABLE_TOOLS = [
   { key: 'send_notification', label: '发送通知' },
 ]
 
-/** Agent Studio（P6 真实）：Agent CRUD + 工具/护栏配置 + LLM 对话测试 */
+/** 智能体构建（P6 真实）：Agent CRUD + 工具/护栏配置 + LLM 对话测试 */
 export default function AgentStudio() {
   const { currentUser } = useUI()
   const canEdit = currentUser?.role.id === 'admin' || currentUser?.role.id === 'data-eng'
@@ -132,7 +132,7 @@ export default function AgentStudio() {
   return (
     <PageShell
       icon={Bot}
-      title="Agent Studio"
+      title="智能体构建"
       subtitle="构建可调用工具与知识的智能体 —— 配置、测试、持久化"
       benchmark="智能体构建"
       features={[
