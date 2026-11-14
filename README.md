@@ -30,7 +30,7 @@ OntoOS 是一个开源的企业本体（Ontology）智能平台：把业务实�
 - **对象（Object）**：客户、设备、工单、订单……由类型定义动态生成表格列与表单
 - **链接（Link）**：对象间的业务关系，构成可探索的关系图谱
 - **动作（Action）**：校验 → 审批 → 写回 → 留痕的可治理变更
-- **AI 原生**：AIP 助手基于本体调用 22 种工具，查数、出图、执行动作全程受权限与语义层约束
+- **AI 原生**：智能助手基于本体调用 22 种工具，查数、出图、执行动作全程受权限与语义层约束
 
 ## 核心能力一览
 
@@ -58,7 +58,7 @@ OntoOS 是一个开源的企业本体（Ontology）智能平台：把业务实�
 |---|---|
 | ![探索分析](docs/screenshots/contour.png) | ![调度优化](docs/screenshots/scheduling.png) |
 
-### 4 · AIP 助手：对话式操作平台（含 ChatBI）
+### 4 · 智能助手：对话式操作平台（含 ChatBI）
 
 侧滑助手常驻全站，双引擎（LLM function-calling / 本地规则降级），**22 个工具**覆盖导航、对象查询、动作执行、知识检索、分组统计、函数/管道/排程、治理扫描、审批决策等；语义层守卫确保只按**认证过的业务口径**回答，无覆盖则明确拒答。
 
@@ -66,7 +66,7 @@ ChatBI 对话内出图并**自动选择图表形态**：时间趋势 → 折线�
 
 | ChatBI 分组聚合（条形图） | ChatBI 月度趋势（折线图） |
 |---|---|
-| ![AIP 助手 ChatBI](docs/screenshots/aip-chatbi.png) | ![AIP 助手趋势](docs/screenshots/aip-chatbi-trend.png) |
+| ![智能助手 ChatBI](docs/screenshots/aip-chatbi.png) | ![智能助手趋势](docs/screenshots/aip-chatbi-trend.png) |
 | **ChatBI 二维交叉（热力矩阵）** | |
 | ![AIP 交叉分析](docs/screenshots/aip-chatbi-cross.png) | |
 
@@ -208,7 +208,7 @@ tests/ · demo-data/            # 冒烟/契约/清单/E2E 剧本/扫描素材 �
 
 ## 路线图
 
-- ✅ **v1.0.0（当前）**：42 应用全 live；AIP 助手 22 工具 + ChatBI（趋势/环比同比/TOP-N/交叉/主动澄清）；语义层；多空间；外部数据源；10 万行级性能验证
+- ✅ **v1.0.0（当前）**：42 应用全 live；智能助手 22 工具 + ChatBI（趋势/环比同比/TOP-N/交叉/主动澄清）；语义层；多空间；外部数据源；10 万行级性能验证
 - 🔜 计划中：PostgreSQL/pgvector 适配 · OIDC/SSO · 流式时序采集 · 更多数据连接器（PG/MySQL/Kafka）· 查询管道实时掩码 · 对象存储 V2
 
 ## 说明
