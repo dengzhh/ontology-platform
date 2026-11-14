@@ -988,7 +988,9 @@ cleanData()
     await api('POST', `/api/aip/threads/${threadId}/followup`, { question: '油封 HS-2041-03 的更换周期是多久？' })
   }
   const thDetail = await api('GET', `/api/aip/threads/${threadId}`)
-  ok('文档分析·线程与多轮问答（引用文档标签）', { ok: thDetail.ok && (thDetail.data?.messages?.length ?? 0) >= 2, status: thDetail.status, data: thDetail.data }, `messages=${thDetail.data?.messages?.length ?? 0}`)
+  // 网关可用 → 完整问答；网关 502 → 草稿态（system 上下文不返回，messages=1），两者均为真实持久化
+  const thOk = thDetail.ok && (thDetail.data?.documentTitles?.length ?? 0) >= 1 && (thDetail.data?.pendingRetry ? (thDetail.data?.messages?.length ?? 0) >= 1 : (thDetail.data?.messages?.length ?? 0) >= 2)
+  ok('文档分析·线程与多轮问答（引用文档标签）', { ok: thOk, status: thDetail.status, data: thDetail.data }, `messages=${thDetail.data?.messages?.length ?? 0} · 引用 ${thDetail.data?.documentTitles?.length ?? 0} 篇${thDetail.data?.pendingRetry ? '（草稿态）' : ''}`)
 
   /* ③ 工作流 apply 真实动作样例 */
   const applyRes = await api('POST', '/api/logic/workflows/PRESET-DEVICE-TRIAGE/run', { input: '设备 F1-IM-2101 健康度 42，停机 12 小时', mode: 'apply' }, ORG, 200, 20000)
