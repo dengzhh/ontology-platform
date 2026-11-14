@@ -81,7 +81,7 @@ ChatBI 对话内出图并**自动选择图表形态**：时间趋势 → 折线�
 ## 快速开始
 
 ```bash
-git clone <repo-url> && cd ontology-platform
+git clone https://github.com/dengzhh/ontology-platform.git && cd ontology-platform
 npm install              # 首次
 npm run db:migrate       # 初始化数据库（data/ontoos.db，幂等）
 npm run seed             # 写入演示数据（星辰智造集团 + 个人生活模板包）
