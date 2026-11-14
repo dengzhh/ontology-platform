@@ -5,6 +5,7 @@ import Btn from '@/components/ui/Btn'
 import { Badge } from '@/components/ui/Badge'
 import { Card, CardHeader } from '@/components/ui/Card'
 import { useApi } from '@/lib/useApi'
+import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
 
 interface Step1 { type: string; count: number; avgHealth: number }
@@ -134,7 +135,12 @@ export default function InsightPage() {
           <div className="flex flex-wrap items-center justify-between gap-2">
             <span className="text-xs text-slate-400">路径运行于 {data.generatedAt} · 数据源：本体对象 设备 / 工单 / 员工 · 空间：{data.spaceName}</span>
             <div className="flex gap-2">
-              <Btn size="sm" onClick={() => notify('当前路径为实时聚合，无需另存模板')}>保存为分析模板</Btn>
+              <Btn size="sm" onClick={async () => {
+                try {
+                  const r = await api<{ id: string }>('/p10/notepad/reports', { method: 'POST', body: { title: `设备停机分析路径 ${new Date().toLocaleDateString('zh-CN')}`, status: 'draft', content: `分析路径：筛选设备 → 状态 → 关联工单 → 员工 → 汇总\n生成时间：${data.generatedAt}\n设备 ${data.summary.devices} 台，停机/维修设备累计停机 ${data.summary.downtime}h，停机最久：${data.summary.worst}。\n关联紧急工单 ${data.summary.tickets} 张，涉及员工 ${data.summary.staff} 名；建议优先安排高停机设备检修排程。` } })
+                  notify(r.id ? '已保存为报告草稿（智能报告列表可载入）' : '保存失败')
+                } catch (e) { notify(e instanceof Error ? e.message : '保存失败') }
+              }}>保存为报告草稿</Btn>
               <Btn size="sm" variant="primary" onClick={() => { navigator.clipboard?.writeText(window.location.href); notify('已复制当前分析路径链接') }}><Share2 size={13} /> 分享路径</Btn>
             </div>
           </div>

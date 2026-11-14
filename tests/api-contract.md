@@ -1,6 +1,6 @@
 # OntoOS API 契约清单
 
-> 端点清单由 `server/routes/*.ts` 路由定义自动提取（`server/index.ts` 挂载前缀统一为 `/api`）。
+> 端点清单按 `server/routes/*.ts` 路由定义整理（`server/index.ts` 挂载前缀统一为 `/api`）。
 > 自动化验证见 `tests/smoke.mjs`；页面人工验收见 `tests/checklist.md`；闭环剧本见 `tests/e2e-scenarios.md`。
 
 ## 通用约定
@@ -23,7 +23,7 @@
 | `GET /ontology/interfaces/:id/check` | — | 逐个实现类型比对契约属性，返回 `{ results:[{typeId,typeName,ok,missing}], propCount }`；未绑定实现时 `results:null` |
 | `POST /automations/rules` | `{ name, trigger:{kind,...}, condition?, actions:[{kind,config?}] }` | 名称/触发/动作必填；condition 参与引擎命中判定 |
 | `POST /workshop` | `{ name, desc?, widgets?, variables? }` | 需空间成员 |
-| `POST /data-layer/connections` | `{ name, type, host?, port?, database? }` | 需空间管理权限；**仅登记，不连接外部库、不产生同步数据** |
+| `POST /data-layer/connections` | `{ name, type, host?, port?, database? }` | 需空间管理权限；非 SQLite/文件类型仅登记；SQLite 与 CSV/JSON/TXT/MD 走真实探测/预览/同步链路 |
 | `POST /p10/notepad/reports` | `{ id?, title, content, status:'draft'\|'published', aipResult? }` | 带 id 更新；写审计 |
 | `POST /p10plus/pipelines` | `{ id?, name, desc?, nodes?, schedule? }` | 默认草稿 |
 | `POST /p10plus/pipelines/:id/validate` | — | 缺 source/output 节点报错 |
@@ -38,11 +38,11 @@
 
 - **业务数据**：SQLite 单文件 `data/ontoos.db` 的 `objects` / `object_types` / `documents` 等真实表。
 - **初始数据**：`server/seed.ts` 把 `src/mocks/ontology.ts` 的 `FACTORY_ROWS`/`DEVICE_ROWS` 等一次性灌入 `objects`（`createdBy='seed'`），之后运行时脱离 mock。
-- **数据连接表 `data_connections` 初始为空**：无种子数据，只有 `POST /data-layer/connections` 才写入；它与 `objects` **没有外键或同步关系**，是独立登记册。
+- **数据连接表 `data_connections` 初始为空**：无种子数据，只有 `POST /data-layer/connections` 才写入；SQLite/文件型连接通过 `/test`、`/tables/:t/preview`、`/sync` 与 `objects` 产生真实同步数据（写审计）。
 - **数据集 `/data-layer/datasets`**：以 `objectTypes` 为数据集，rowCount 来自 `objects`，不读 `data_connections`。
-- 因此「数据连接页没有连接记录」属正常初始状态，不影响平台其他页面有真实业务数据。
+- 装载脚本 `load.mjs` 会登记 3 条真实连接（集团ERP备件库存库 / 财务报销流水CSV / 设备台账导出JSON）。
 
-## 全部端点（按路由组，23 组 / 约 180 个）
+## 全部端点（按路由组，28 组 / 约 199 个）
 
 ### /api/actions  (actionRoutes)
   GET /
@@ -296,6 +296,29 @@
   PATCH /:id
   DELETE /:id
 
+### /api/fn  (functionRoutes)
+  GET|POST /functions/:fnId/versions      # 版本列表 / 新建草稿（自动沙箱测试）
+  POST /functions/:fnId/versions/:id/test|publish|rollback
+  POST /functions/:fnId/run               # 执行已发布版本或指定 versionId
+
+### /api/explorations  (explorationRoutes)
+  GET|POST /explorations                 # 保存的探索（前缀别名 /api/explorations/explorations 同样可用）
+  POST /explorations/:id/run             # 真实过滤 + 排序（上限 50）
+  POST /compare                          # 对象集比较 { a, b } → onlyA/onlyB/intersection
+  GET|POST /derived, POST /derived/:id/eval
+  GET|POST /scenarios, POST /scenarios/:id/change|merge|discard
+
+### /api/ops  (platformOpsRoutes)
+  GET /timeseries/points, POST /timeseries/collect|collect-from-objects, GET /timeseries/series
+  POST /timeseries/governance/scan|mask|lifecycle   # 治理执行记录
+  GET /governance/runs
+
+### /api/scheduling  (schedulingRoutes)
+  GET /tasks|metrics, POST /tasks|seed|solve, POST /apply/:planId
+
+### /api/apollo  (apolloRoutes)
+  GET /deployments|stats|freeze-windows|clusters, POST /seed|deploy|promote/:id|rollback/:id
+
 ---
 
-*清单由 `server/routes/*.ts` 自动提取；如新增端点，请同步更新本文件与 `tests/smoke.mjs` 的只读端点数组。*
+*清单按 `server/routes/*.ts` 路由定义整理；如新增端点，请同步更新本文件与 `tests/smoke.mjs` 的只读端点数组。*

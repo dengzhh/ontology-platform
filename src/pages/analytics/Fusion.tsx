@@ -71,7 +71,15 @@ export default function FusionPage() {
       actions={
         <>
           <Btn size="sm" disabled={q.loading} onClick={() => { q.reload(); setVersion((v) => v + 1); notify('已从本体重新同步') }}><RefreshCw size={13} /> 立即同步</Btn>
-          <Btn size="sm" variant="primary" onClick={() => notify('已按当前 Factory 对象集刷新工作表')}><Plus size={13} /> 刷新工作表</Btn>
+          <Btn size="sm" variant="primary" onClick={() => {
+            // 导出当前工作表为 CSV（真实产物，而非仅弹提示）
+            const headers = ['工厂名称', '所在城市', '设备数', 'OEE', '备注']
+            const rows = (data?.rows ?? []).map((r) => (r.cells ?? []).map((c) => `"${String(c ?? '').replace(/"/g, '""')}"`).join(','))
+            const csv = '\uFEFF' + [headers.join(','), ...rows].join('\n')
+            const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }))
+            const a = document.createElement('a'); a.href = url; a.download = '设备工作表.csv'; a.click(); URL.revokeObjectURL(url)
+            notify(`已导出工作表（${rows.length} 行）为 CSV`)
+          }}><Plus size={13} /> 导出工作表</Btn>
         </>
       }
     >

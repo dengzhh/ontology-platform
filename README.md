@@ -30,7 +30,7 @@ OntoOS 是一个开源的企业本体（Ontology）智能平台：把业务实�
 - **对象（Object）**：客户、设备、工单、订单……由类型定义动态生成表格列与表单
 - **链接（Link）**：对象间的业务关系，构成可探索的关系图谱
 - **动作（Action）**：校验 → 审批 → 写回 → 留痕的可治理变更
-- **AI 原生**：AIP 助手基于本体调用 21 种工具，查数、出图、执行动作全程受权限与语义层约束
+- **AI 原生**：AIP 助手基于本体调用 22 种工具，查数、出图、执行动作全程受权限与语义层约束
 
 ## 核心能力一览
 
@@ -52,9 +52,9 @@ OntoOS 是一个开源的企业本体（Ontology）智能平台：把业务实�
 
 ### 3 · 交互分析与调度优化
 
-探索分析 点击式探索：维度分组聚合真实对象，柱图/饼图/明细表联动，支持日期分桶与时间范围；调度优化内置约束求解引擎（产线/批次/优先级/工时冲突检测），甘特视图一键应用排程。
+探索分析：维度分组聚合真实对象，柱图/饼图/明细表联动，支持日期分桶与时间范围；调度优化内置约束求解引擎（产线/批次/优先级/工时冲突检测），甘特视图一键应用排程。
 
-| 探索分析 数据分析 | 调度优化（甘特 + 冲突检测） |
+| 探索分析 | 调度优化（甘特 + 冲突检测） |
 |---|---|
 | ![探索分析](docs/screenshots/contour.png) | ![调度优化](docs/screenshots/scheduling.png) |
 
@@ -182,7 +182,7 @@ server/
 ├── routes/ · engine/          # 业务 API · 动作/检索/向量/沙箱/语义层/外部源引擎
 ├── templates/packs.ts         # 演示模板包
 └── migrate.ts · seed.ts       # 幂等迁移 / 演示数据
-shared/ai-tools.ts             # 前后端共享的 21 个 AI 工具契约
+shared/ai-tools.ts             # 前后端共享的 22 个 AI 工具契约
 tests/ · demo-data/            # 冒烟/契约/清单/E2E 剧本/扫描素材 · 验证数据装载
 ```
 
@@ -194,7 +194,7 @@ tests/ · demo-data/            # 冒烟/契约/清单/E2E 剧本/扫描素材 �
 | `demo-data/load.mjs` | **118 项幂等装载** | 一键生成验证全部功能的数据集（含外部库构建） |
 | `demo-data/stress.mjs` | **10 万行基准** | 事务灌入 726ms、索引列表 0.3ms、count 5.4ms，自动清理 |
 | `demo-data/FEATURE-MATRIX.md` | 42 页矩阵 | 每页功能 ↔ 验证数据 ↔ 体验步骤 |
-| `tests/checklist.md` / `e2e-scenarios.md` | 40 页清单 / 10 剧本 | 人工验收与业务闭环走查 |
+| `tests/checklist.md` / `e2e-scenarios.md` | 42 页清单 / 10 剧本 | 人工验收与业务闭环走查 |
 | `tests/fixtures/` | 24 个素材 | 小票/发票/订单/快递 + PDF/Word/CSV/TXT + 边界异常 |
 
 ## 已实现深度（节选）
@@ -215,7 +215,8 @@ tests/ · demo-data/            # 冒烟/契约/清单/E2E 剧本/扫描素材 �
 
 - 演示数据为虚构企业「星辰智造集团」与个人生活模板包；`src/mocks/*` 仅供 seed 使用，页面运行时一律走 API
 - 所有文案为简体中文；开发规范见 [CONVENTIONS.md](./CONVENTIONS.md)
-- **完整技术文档**：[docs/TECHNICAL-GUIDE.md](./docs/TECHNICAL-GUIDE.md) —— 42 个模块逐个说明「功能 / 实现原理 / 能力边界 / 验证方式」，含 25 张真实截图、架构分层、横切能力与边界总表
+- **完整技术文档**：[docs/TECHNICAL-GUIDE.md](./docs/TECHNICAL-GUIDE.md) —— 42 个模块逐个说明「功能 / 实现原理 / 能力边界 / 验证方式」，含 29 张真实截图、架构分层、横切能力与边界总表
+- **项目状态报告**：[docs/PROJECT-STATUS.md](./docs/PROJECT-STATUS.md) —— 完成度评估、分域评分、遗漏任务清单与下一步路线图
 - 本项目单进程零运维设计，适合本地部署、私有化演示与二次开发
 
 <div align="center">

@@ -394,6 +394,19 @@ function localAnswer(user: SessionUser, text: string, spaceId: string): LlmResul
   if (/(数据源|外部连接|连接列表)/.test(t)) return { reply: '', toolCalls: [{ id: 'local-src', name: 'sync_source', args: { action: 'list' } }] }
   if (/(待审批|审批单)/.test(t)) return { reply: '', toolCalls: [{ id: 'local-appr', name: 'decide_approval', args: { action: 'list' } }] }
   if (/(采集.*时序|时序采集|真实曲线)/.test(t)) return { reply: '', toolCalls: [{ id: 'local-ts', name: 'collect_timeseries', args: { valueKey: 'health' } }] }
+  // 本地引擎补齐三类工具意图：函数运行 / 管道运行 / 对象集比较（LLM 未配置时同样可达）
+  if (/(运行|执行|测试).*(函数|计算|computeOee)/.test(t)) {
+    const fn = t.match(/["“](.+?)["”]/)?.[1] ?? ''
+    return { reply: '', toolCalls: [{ id: 'local-fn', name: 'run_function', args: { name: fn || '设备OEE计算', input: '{"availability":0.9,"performance":0.95,"quality":0.98}' } }] }
+  }
+  if (/(运行|执行|跑一下).*(管道|pipeline)/.test(t)) {
+    const nm = t.match(/["“](.+?)["”]/)?.[1] ?? ''
+    return { reply: '', toolCalls: [{ id: 'local-pl', name: 'run_pipeline', args: { name: nm || '注塑机备件消耗日结管道' } }] }
+  }
+  if (/(比较|对比).*(对象集|设备集|集合)/.test(t)) {
+    // 无具体 id 时不猜集合：让前端给出明确的「需先在对象浏览器保存两个对象集」提示
+    return { reply: '请先在「对象浏览器」用「保存的探索」建立两个对象集，再告诉我它们的名称或在集比较里选中；也可以直接问「有哪些保存的探索」。', toolCalls: [] }
+  }
 
   // ChatBI 聚合分析（本地引擎兜底）：命中分析问法 + 类型别名时调用 analyze_objects
   const ANALYZE_RE = /(统计|聚合|占比|分布|趋势|各.*(多少|花费|金额)|按.*(统计|分组|分析|汇总)|最多|最大|平均|画个图|图表|TOP\s*\d|前\s*\d+\s*[个条名])/

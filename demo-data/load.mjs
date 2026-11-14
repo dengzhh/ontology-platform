@@ -731,8 +731,11 @@ cleanData()
 {
   const src = path.join(ROOT, 'tests', 'fixtures', 'images', '01-receipt-convenience.png')
   const dst = path.join(ROOT, 'demo-data', 'files', 'receipt-demo.png')
-  if (fs.existsSync(src)) { fs.copyFileSync(src, dst); ok('扫描素材·示例小票', { ok: true }, 'demo-data/files/receipt-demo.png') }
-  else ok('扫描素材·示例小票', { ok: false, status: 0, data: {} })
+  if (fs.existsSync(src)) {
+    fs.copyFileSync(src, dst)
+    const copied = fs.existsSync(dst) && fs.statSync(dst).size > 0
+    ok('扫描素材·示例小票', { ok: copied, status: copied ? 200 : 0, data: {} }, copied ? `已复制 ${fs.statSync(dst).size} 字节` : '复制失败')
+  } else ok('扫描素材·示例小票', { ok: false, status: 0, data: {} })
 }
 
 /* ---------------- 11. 本体函数可执行化（模块1） ---------------- */
@@ -1003,7 +1006,9 @@ cleanData()
     if (ex) run('UPDATE settings SET value=?, updated_at=? WHERE key=?', JSON.stringify(value), now, key)
     else run('INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)', key, JSON.stringify(value), now)
   }
-  ok('控制面板·四卡已保存配置可复现', { ok: true, status: 200, data: {} }, 'SMTP/嵌入/视觉/功能开关')
+  const cfgBack = raw('SELECT key, value FROM settings WHERE key IN (' + NAMES.settingKeys.map(() => '?').join(',') + ')', ...NAMES.settingKeys)
+  const cfgOk = cfgBack.length === NAMES.settingKeys.length && cfgBack.every((r) => { try { return Object.keys(JSON.parse(String(r.value))).length > 0 } catch { return false } })
+  ok('控制面板·四卡已保存配置可复现', { ok: cfgOk, status: cfgOk ? 200 : 0, data: {} }, cfgOk ? '4 个 settings key 回读校验通过' : '配置回读校验失败')
 
   /* ⑤ 审批三态：待审批 / 已通过 / 已驳回 */
   const acts = (await api('GET', '/api/actions')).data?.actions ?? []

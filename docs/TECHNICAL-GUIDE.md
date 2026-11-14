@@ -25,7 +25,7 @@
 
 > **编号说明**：下文用 ①~㊺ 顺序编号，其中 ⑯ 为对象存储横切说明、㉖ 为域归属说明、㊲ 为全局侧滑智能助手（非独立路由），三者不计入 42 个应用页面；其余 42 个编号与 `src/config/nav.ts` 的 42 项一一对应。
 
-**文档内截图**：`docs/screenshots/` 下 27 张 1440×900 真实界面截图（登录、仪表盘、建模、图谱、检索、ChatBI 四形态、工作流预设、审批、控制面板等），全部来自运行中的系统。
+**文档内截图**：`docs/screenshots/` 下 29 张 1440×900 真实界面截图（登录、仪表盘、建模、图谱、检索、ChatBI 四形态、工作流预设、审批、控制面板等），全部来自运行中的系统。
 
 **配套资产**：`demo-data/FEATURE-MATRIX.md`（42 页验证矩阵）、`tests/api-contract.md`（端点契约）、`tests/smoke.mjs`（187 项黑盒断言）、`demo-data/load.mjs`（118 项幂等数据集）、`CONVENTIONS.md`（开发规范）。
 
@@ -41,7 +41,7 @@
 └──────────────────────────────────────┬────────────────────────────────────────────────────┘
                                        │ fetch（JWT + x-space-id，src/lib/api.ts）
 ┌──────────────────────────────────────▼────────────────────────────────────────────────────┐
-│                          Hono API 服务（27 个路由组，server/index.ts:38-65）                 │
+│                          Hono API 服务（28 个路由组，server/index.ts:38-65）                 │
 │  对象/本体 · 动作/审批/审计 · 知识(分块/向量/BM25+RRF) · 聚合分析 · 时序 · 调度求解           │
 │  智能助手(22 工具) · 工作流 · Agent · 文档分析 · 函数沙箱(vm) · 扫描识别 · 治理 · 数据源       │
 │  ── 引擎层 server/engine/：automation / knowledge / semantic / agentTools /                  │
@@ -65,7 +65,7 @@
 | 层 | 选型 | 关键依据 |
 |---|---|---|
 | 前端 | React 18 · TypeScript(strict) · Vite 5 · TailwindCSS · recharts · lucide-react | 42 页全 live；`status.ts` 单一事实来源 |
-| 后端 | Hono · @hono/node-server · Drizzle ORM | 27 路由组按域挂载，`server/routes/*` |
+| 后端 | Hono · @hono/node-server · Drizzle ORM | 28 路由组按域挂载，`server/routes/*` |
 | 数据 | better-sqlite3（单文件 WAL） | 零运维；幂等迁移；升级可换 PG 方言 |
 | 认证 | JWT(HS256) + bcryptjs + API 密钥(SHA-256) | 多空间行级隔离；无吊销（边界见 §5） |
 | 知识 | BM25 + 向量余弦 + RRF 融合 | 远程 embedding + 本地 256 维哈希降级 |
@@ -74,7 +74,7 @@
 
 ### 2.3 数据模型要点
 
-`server/schema.ts` 定义 51 张表（50 张 `sqliteTable` + 1 张手动迁移表）。核心：
+`server/schema.ts` 定义 51 张表（50 张业务表（schema.ts 定义、migrate.ts 幂等建）+ 1 张 drizzle 迁移元数据表）。核心：
 
 - **本体**：`object_types`（`properties` JSON 动态属性）、`link_types`、`action_types`、`ontology_functions`、`interface_types`、`ontology_terms`
 - **实例**：`objects`（`values` JSON 通用存储）、`object_links`；热点索引 `idx_objects_space_type` / `idx_objects_space_updated`（`migrate.ts:146-152`）
@@ -356,7 +356,7 @@
 - **功能**：选知识库文档 + 任务 → 真实 AI 结构化分析；**带文档上下文与历史的多轮追问**；引用文档标签；失败保留草稿 + 一键重试；删除二次确认。
 - **原理**：`aip.ts:182-335`：`buildDocContext()` 把文档正文（截断 5000 字）以 `role:'system'` 持久化；`POST /threads` 失败返回 `{error, retryable:true}` 502 并保留会话；`POST /:id/retry` 从 system/user 消息恢复重跑；`POST /:id/followup` 拼「文档上下文 + 历史对话 + 追问」调 LLM 并双写消息；`GET /:id` 返回 `pendingRetry` 且**不暴露 system 上下文**；前端对话气泡 + 乐观追加/失败回滚。
 - **边界**：不降级（网关失败明确报错，不伪造结果）；上下文截断 5000 字；追问把全部历史拼入（无窗口裁剪）；无附件解析/段落级引用定位。与「工作流编排」的分工见 [§4.2](#42-函数沙箱与工作流)。
-- **验证**：smoke 177 中草稿保留/retry/followup 契约；截图 `doc-analysis.png`。
+- **验证**：smoke 187 中草稿保留/retry/followup 契约；截图 `doc-analysis.png`。
 
 ![文档分析](screenshots/doc-analysis.png)
 
@@ -386,7 +386,7 @@
 - **功能**：22 工具对话式操作平台；ChatBI 对话内出图（折线/饼图/条形/交叉热力表 + 同比环比对比卡）；主动澄清；会话持久化；多空间快捷示例；双引擎降级。
 - **原理**：完整链路见 [§4.1](#41-智能助手与语义层) 与 [§4.3](#43-chatbi-与聚合引擎)。
 - **边界**：最多 4 轮工具循环；图表仅最近 12 / 前 8 组；`cites` 协议字段未渲染来源 chips；本地引擎只能发起约 14 个工具（其余需 LLM 模式）；网关 429 时降级本地引擎。
-- **验证**：smoke 187 项；4 张 ChatBI 截图（`aip-chatbi.png` / `-trend.png` / `-cross.png`）。
+- **验证**：smoke 187 项；3 张 ChatBI 截图（`aip-chatbi.png` / `-trend.png` / `-cross.png`）。
 
 ![ChatBI 分组聚合](screenshots/aip-chatbi.png)
 
@@ -529,12 +529,12 @@
 
 | 资产 | 规模 | 说明 |
 |---|---|---|
-| `tests/smoke.mjs` | **177 断言 / 0 失败** | 零依赖黑盒：登录 → 60+ 读端点 → 写闭环 → 权限 → 外部源 → ChatBI → 沙箱 → 分页/批量 → 预设/追问 |
+| `tests/smoke.mjs` | **187 断言 / 0 失败** | 零依赖黑盒：登录 → 60+ 读端点 → 写闭环 → 权限 → 外部源 → ChatBI → 沙箱 → 分页/批量 → 预设/追问 |
 | `demo-data/load.mjs` | **118 项幂等** | 24 个月订单时序（季节波动 + 年增 18%）、2 个工作流、6 预设、外部库、24 扫描素材 |
 | `demo-data/stress.mjs` | 10 万行基准 | 灌入/列表/count/关键词延迟，自动清理 |
 | `demo-data/FEATURE-MATRIX.md` | 42 页矩阵 | 功能 ↔ 验证数据 ↔ 体验步骤 |
-| `tests/checklist.md` / `e2e-scenarios.md` | 40 页清单 / 10 剧本 | 人工验收 |
-| `docs/screenshots/` | 25 张 | 真实界面截图 |
+| `tests/checklist.md` / `e2e-scenarios.md` | 42 页清单 / 10 剧本 | 人工验收 |
+| `docs/screenshots/` | 29 张 | 真实界面截图 |
 
 ---
 
@@ -564,11 +564,11 @@
 
 ## 六、附录
 
-### 6.1 路由组清单（27 个，`server/index.ts:38-65`）
+### 6.1 路由组清单（28 个，`server/index.ts:38-65`）
 
 `/api/auth` `/api/users` `/api/roles` `/api/admin` `/api/ai` `/api/objects` `/api/ontology` `/api/spaces` `/api/actions` `/api/automations` `/api/knowledge` `/api/workshop` `/api/extract` `/api/dashboard` `/api/aip` `/api/p10` `/api/p10plus` `/api/p10long` `/api/gov` `/api/data-layer` `/api/logic` `/api/scan` `/api/scan-session` `/api/fn` `/api/explorations` `/api/ops` `/api/scheduling` `/api/apollo`
 
-### 6.2 引擎清单（9 个，`server/engine/`）
+### 6.2 引擎清单（8 个，`server/engine/`）
 
 `automation.ts`（规则触发） · `knowledge.ts`（分块/BM25/向量/RRF） · `semantic.ts`（认证术语守卫） · `agentTools.ts`（Agent 工具护栏） · `externalSource.ts`（SQLite 外部源白名单） · `fileSource.ts`（CSV/JSON/TXT/MD 解析） · `functionSandbox.ts`（vm 沙箱） · `scanTemplates.ts`（识别模板自动匹配）
 
@@ -601,9 +601,9 @@ node tests/smoke.mjs     # 187 项黑盒断言
 | `aip-chatbi-trend.png` | ChatBI 趋势折线 | `aip-chatbi-cross.png` | ChatBI 交叉热力表 |
 | `aip-logic-presets.png` | 工作流预设 | `aip-logic-zoom.png` | 工作流画布缩放 |
 | `aip-logic-actions.png` | 工作流真实动作结果 | `doc-analysis.png` | 文档分析 |
-| `aip-logic-actions.png` | 工作流真实动作结果 | `doc-analysis.png` | 文档分析 |
 | `data-connections.png` | 数据连接 | `datasets.png` | 数据集 |
-| `machinery-editor.png` | 流程编排编辑器 | `pipelines-editor.png` | 管道节点编辑器 | `lineage.png` | 数据血缘 | `approvals.png` | 审批中心 |
+| `machinery-editor.png` | 流程编排编辑器 | `pipelines-editor.png` | 管道节点编辑器 |
+| `lineage.png` | 数据血缘 | `approvals.png` | 审批中心 |
 | `audit.png` | 审计日志 | `control-panel.png` | 控制面板（已裁去敏感配置） |
 | `users.png` | 用户与权限 | `workshop.png` | 应用搭建 |
 | `marketplace.png` | 应用市场 | | |
@@ -611,6 +611,7 @@ node tests/smoke.mjs     # 187 项黑盒断言
 ### 6.5 相关文档
 
 - [README.md](../README.md) — 产品图文介绍与快速开始
+- [PROJECT-STATUS.md](./PROJECT-STATUS.md) — 项目状态报告（完成度评估、遗漏任务、路线图）
 - [CONVENTIONS.md](../CONVENTIONS.md) — 页面开发规范（诚实标注、状态单一事实来源）
 - [FEATURE-MATRIX.md](../demo-data/FEATURE-MATRIX.md) — 42 页验证矩阵
 - [api-contract.md](../tests/api-contract.md) — 端点契约

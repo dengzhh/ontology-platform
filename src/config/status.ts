@@ -69,7 +69,7 @@ export const PAGE_STATUS: Record<string, PageStatusInfo> = {
   '/overview': { phase: 'P9', status: 'live', note: '空间统计/类型分布/趋势/枚举/审计真实聚合；系统健康：本体/索引/规则来自真实数据，AI 网关真实可达性探测（2.5s 超时）' },
   // 数据（P3 补齐：连接/数据集/代码资产已建后端并接真）
   '/data/connections': { phase: 'P10', status: 'live', note: 'SQLite 外部库 + CSV/JSON/TXT/MD 文件型数据源：真实探测/表预览/同步为对象（路径白名单只读）' },
-  '/data/pipelines': { phase: 'P10', status: 'live', note: '管道定义 CRUD + 校验/发布/运行真实落库（pipeline_runs 真实运行记录，不再用审计伪造指标）；固定拓扑仍是结构示意' },
+  '/data/pipelines': { phase: 'P10', status: 'live', note: '真实节点编辑画布（拖拽/连线/撤销/缩放，坐标与连线随定义持久化）；定义 CRUD + 校验/发布/运行真实落库（pipeline_runs）；运行为统计扫描，不执行真实 ETL 节点' },
   '/data/code': { phase: 'P10', status: 'live', note: '代码资产登记/查看/编辑/删除真实落库；Git PR 集成明确禁用说明' },
   '/data/datasets': { phase: 'P10', status: 'live', note: '对象类型即数据集：列表/预览/健康/Schema 全真实数据' },
   '/data/lineage': { phase: 'P10', status: 'live', note: '四层血缘与影响分析来自真实类型/链接/应用/文档；拓扑按节点数自动拉开行距 + 滚轮缩放/平移，解决节点重叠' },
