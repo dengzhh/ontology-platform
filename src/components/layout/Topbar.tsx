@@ -346,7 +346,7 @@ export default function Topbar() {
                     <Avatar name={currentUser.name} className="h-9 w-9 text-sm" />
                     <div>
                       <div className="text-[13px] font-bold text-slate-800">{currentUser.name}</div>
-                      <div className="text-[11px] text-slate-400">{currentUser.account}@xingchen-mfg</div>
+                      <div className="text-[11px] text-slate-400">{currentUser.account}@example.com</div>
                     </div>
                   </div>
                   <div className="mt-2 flex flex-wrap gap-1">

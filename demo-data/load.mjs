@@ -996,7 +996,7 @@ cleanData()
 
   /* ④ 控制面板四卡配置（直插 settings，可复现） */
   const cfg = [
-    ['smtp', { host: 'smtp.exmail.qq.com', port: 465, user: 'it@xingchen-mfg.com', from: 'noreply@xingchen-mfg.com', fromName: 'OntoOS 平台', ssl: true }],
+    ['smtp', { host: 'smtp.example.com', port: 465, user: 'it@example.com', from: 'noreply@example.com', fromName: 'OntoOS 平台', ssl: true }],
     ['embedding', { model: 'embedding-2', endpoint: '', apiKey: '', enabled: true }],
     ['vision', { model: 'glm-ocr', textModel: 'hy4free', endpoint: '', apiKey: '' }],
     ['features', { marketplace: true, scanTemplates: true, workflowPresets: true }],

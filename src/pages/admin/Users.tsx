@@ -257,7 +257,7 @@ export default function UsersAdmin() {
                           <Avatar name={u.name} />
                           <span>
                             <span className="block font-semibold text-slate-800">{u.name}{u.id === currentUser?.id && <span className="ml-1 text-[10px] text-brand-500">(我)</span>}</span>
-                            <span className="block text-[11px] text-slate-400">{u.account}@xingchen-mfg</span>
+                            <span className="block text-[11px] text-slate-400">{u.account}@example.com</span>
                           </span>
                         </span>
                       ),

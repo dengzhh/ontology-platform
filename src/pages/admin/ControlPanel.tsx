@@ -69,13 +69,13 @@ function SmtpCard() {
         actions={configured ? <Badge color="green" dot>已配置</Badge> : <Badge color="amber" dot>未配置（邀请走 mailto 降级）</Badge>}
       />
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-        <Field label="SMTP 服务器" required hint="如 smtp.exmail.qq.com"><Input value={form.host} onChange={(e) => setForm({ ...form, host: e.target.value })} placeholder="smtp.example.com" /></Field>
+        <Field label="SMTP 服务器" required hint="如 smtp.example.com"><Input value={form.host} onChange={(e) => setForm({ ...form, host: e.target.value })} placeholder="smtp.example.com" /></Field>
         <Field label="端口" hint="SSL 通常 465，STARTTLS 为 587"><Input value={form.port} onChange={(e) => setForm({ ...form, port: e.target.value })} /></Field>
         <Field label="账号" required><Input value={form.user} onChange={(e) => setForm({ ...form, user: e.target.value })} placeholder="发件邮箱账号" /></Field>
         <Field label="密码 / 授权码" hint={configured ? '已保存，留空表示沿用' : '邮箱密码或 SMTP 授权码'}>
           <Input type="password" value={form.pass} onChange={(e) => setForm({ ...form, pass: e.target.value })} placeholder={configured ? '••••••••' : ''} />
         </Field>
-        <Field label="发件人地址" required><Input value={form.from} onChange={(e) => setForm({ ...form, from: e.target.value })} placeholder="ontoos@xingchen-mfg.com" /></Field>
+        <Field label="发件人地址" required><Input value={form.from} onChange={(e) => setForm({ ...form, from: e.target.value })} placeholder="ontoos@example.com" /></Field>
         <Field label="发件人名称"><Input value={form.senderName} onChange={(e) => setForm({ ...form, senderName: e.target.value })} /></Field>
         <Field label="加密方式">
           <div className="flex gap-2">
