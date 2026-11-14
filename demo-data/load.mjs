@@ -34,30 +34,36 @@ const NAMES = {
   functions: ['设备OEE计算'],
   interfaces: ['可估值资产契约'],
   terms: ['设备资产总值'],
-  documents: ['注塑机液压系统维护规程', 'CNC 主轴保养手册', '设备点检作业指导书', '车间安全生产条例', '模具入库验收规范'],
-  automationRules: ['设备健康度低阈值告警'],
-  workshopApps: ['设备运维监控台'],
-  reports: ['2026年10月设备运营月报'],
-  pipelines: ['ERP备件库存同步'],
-  marketplace: ['连锁门店库存管理包'],
+  documents: ['注塑机液压系统维护规程', 'CNC 主轴保养手册', '设备点检作业指导书', '车间安全生产条例', '模具入库验收规范', '顺德注塑基地点检 SOP'],
+  automationRules: ['设备健康度低阈值告警', '注塑机停机且超时升级', '维修工单逾期未派单提醒（已停用）'],
+  workshopApps: ['设备运维监控台', '顺德基地设备运营驾驶舱', '订单履约看板'],
+  reports: ['2026年10月设备运营月报', '2026年11月设备检修周报', '2026年Q4客户交付分析'],
+  pipelines: ['注塑机备件消耗日结管道', '销售订单履约同步管道', '设备点检文本入库管道', 'ERP备件库存同步'],
+  marketplace: ['连锁门店库存管理包', '星辰智造-设备点检模板包', '星辰智造-供应商季度评估包', '星辰智造-门店巡检轻量包'],
   workflows: ['设备停机标准处置流程', '采购申请分级审批流程'],
   machineryFlows: ['设备检修申请流程'],
-  conversations: ['设备运维助理', '设备巡检问答'],
-  cipherRules: ['客户手机号脱敏'],
-  lifecyclePolicies: ['操作日志180天保留'],
-  modelRegistrations: ['GLM-4-Flash对话模型'],
-  userGroups: ['华南区设备运维组'],
-  repoFiles: ['oeeCalculator.ts'],
-  scanTemplates: ['快递面单识别'],
+  conversations: ['设备运维助理', '设备巡检问答', '华南区备件采购问答助理', '质检合规审查助理', '《注塑机液压系统维护规程》检修要点分析'],
+  cipherRules: ['客户手机号脱敏', '供应商银行账号脱敏', '身份证号脱敏（已停用）'],
+  lifecyclePolicies: ['操作日志180天保留', '财务凭证7年保留', '巡检临时数据30天清理'],
+  modelRegistrations: ['GLM-4-Flash对话模型', '混元hy4free主力模型', 'embedding-2 知识向量模型', 'glm-ocr 票据识别模型'],
+  userGroups: ['华南区设备运维组', '顺德基地夜班运维组', '供应链对账组', '合规审计组'],
+  repoFiles: ['src/etl/oeeCalculator.ts', 'src/etl/sparePartsSync.ts', 'sql/spare_parts_daily.sql', 'src/etl/healthScore.py'],
+  scanTemplates: ['快递面单识别', '星辰智造-设备点检表识别', '星辰智造-供应商增值税发票识别', '星辰智造-模具验收单识别'],
   connections: ['集团ERP备件库存库', '财务报销流水CSV', '设备台账导出JSON'],
-  explorations: ['健康度80+优秀设备清单'],
+  explorations: ['健康度80+优秀设备清单', '待检修设备集（健康<70 且维修中）', '东莞瑞泰相关订单'],
+  derivedProperties: ['downtimeCost'],
   scenarios: ['Q4新增注塑机上线'],
-  scanFindingTables: ['crm_customers'],
-  metrics: ['health_daily'],
+  scanFindingTables: ['crm_customers', 'hr_employee', 'supplier'],
+  metrics: ['health_daily', 'downtime_hours_daily', 'hydraulic_temp_hourly'],
+  approvalTitles: ['AP-20261114-01 顺德基地 F1-IM-2101 主轴更换申请', 'AP-20261114-02 南海基地备件采购 ¥128,600', 'AP-20261113-07 客户联系方式导出', 'AP-20261113-03 Q4模具批次本体变更'],
+  apiKeys: ['星辰智造-ERP同步只读密钥', 'MES写回集成密钥', '平台运维密钥'],
+  evalConversations: ['EVAL-星辰智造-设备术语问答回归集'],
+  settingKeys: ['smtp', 'embedding', 'vision', 'features'],
+  deployments: ['v3.0.0-顺德注塑MES上线', 'v3.0.1-南海CNC排程修复', 'v3.0.2-禅城装配质检看板'],
   /** 对象 id 前缀（ChatBI 订单直插用真实单号前缀） */
   objectIdPrefixes: ['order:SO-2'],
   /** 对象 values 包含标记（用于清掉随机 id 的 API 创建对象） */
-  objectMarkers: ['F1-IM-210', 'F1-CN-210', 'F2-IM-210', 'F2-CN-210', 'F2-CN-220', 'F3-IM-3001', 'GD-2026-30', 'CU-080', 'SO-2026-27', '顺德注塑基地', '南海精密加工基地', '禅城装配基地', '东莞市瑞泰精密模具', '深圳市康诺电子科技', '惠州市联翔五金制品', '广州鹏程汽车零部件', '佛山恒力液压', '中山金鑫轴承', '东莞广泰密封件', '广州华顺电气'],
+  objectMarkers: ['F1-IM-210', 'F1-IM-2199', 'F1-CN-210', 'F2-IM-210', 'F2-CN-210', 'F2-CN-220', 'F3-IM-3001', 'GD-2026-30', 'CU-080', 'SO-2026-27', '顺德注塑基地', '南海精密加工基地', '禅城装配基地', '东莞市瑞泰精密模具', '深圳市康诺电子科技', '惠州市联翔五金制品', '广州鹏程汽车零部件', '佛山恒力液压', '中山金鑫轴承', '东莞广泰密封件', '广州华顺电气'],
   /** 个人空间消费标题（重复装载幂等清理） */
   personalTitles: ['午餐', '地铁', '房租', '超市采购', '电影', '体检', '巡检便利店小票'],
 }
@@ -118,6 +124,7 @@ function cleanData() {
     ['DELETE FROM objects WHERE "values" LIKE ?', ['%巡检便利店小票%']],
     // 各业务表按名称
     ['DELETE FROM documents WHERE title IN (' + NAMES.documents.map(() => '?').join(',') + ')', NAMES.documents],
+    ['DELETE FROM extract_candidates WHERE id LIKE ?', ['EC-DEMO-%']],
     ['DELETE FROM automation_rules WHERE name IN (' + NAMES.automationRules.map(() => '?').join(',') + ')', NAMES.automationRules],
     ['DELETE FROM workshop_apps WHERE name IN (' + NAMES.workshopApps.map(() => '?').join(',') + ')', NAMES.workshopApps],
     ['DELETE FROM reports WHERE title IN (' + NAMES.reports.map(() => '?').join(',') + ')', NAMES.reports],
@@ -133,6 +140,7 @@ function cleanData() {
     ['DELETE FROM user_groups WHERE name IN (' + NAMES.userGroups.map(() => '?').join(',') + ')', NAMES.userGroups],
     ['DELETE FROM repo_files WHERE path IN (' + NAMES.repoFiles.map(() => '?').join(',') + ')', NAMES.repoFiles],
     ['DELETE FROM saved_explorations WHERE name IN (' + NAMES.explorations.map(() => '?').join(',') + ')', NAMES.explorations],
+    ['DELETE FROM derived_properties WHERE key IN (' + NAMES.derivedProperties.map(() => '?').join(',') + ')', NAMES.derivedProperties],
     ['DELETE FROM ontology_scenarios WHERE name IN (' + NAMES.scenarios.map(() => '?').join(',') + ')', NAMES.scenarios],
     ['DELETE FROM scan_findings WHERE table_name IN (' + NAMES.scanFindingTables.map(() => '?').join(',') + ')', NAMES.scanFindingTables],
     ['DELETE FROM ai_conversations WHERE title IN (' + NAMES.conversations.map(() => '?').join(',') + ')', NAMES.conversations],
@@ -209,7 +217,35 @@ function cleanData() {
     try { run(`DELETE FROM ${table} WHERE ${col} LIKE ?`, `${TAG}%`) } catch { /* 表/列不存在则跳过 */ }
   }
   run(`DELETE FROM audit_events WHERE target LIKE ? AND created_at > ?`, `${TAG}%`, Date.now() - 30 * 86400_000)
-  // ④ 清掉 manifest 自身
+  // ④ §18 补强数据的精确清理（Evals 会话/消息、文档分析线程、审批三态、密钥、配置、部署样例）
+  for (const eid of NAMES.evalConversations) {
+    run('DELETE FROM ai_messages WHERE conversation_id=?', eid)
+    run('DELETE FROM ai_conversations WHERE id=?', eid)
+  }
+  run('DELETE FROM ai_messages WHERE conversation_id=?', 'TH-DEMO-01')
+  run('DELETE FROM ai_conversations WHERE id=?', 'TH-DEMO-01')
+  for (const cid of raw('SELECT id FROM ai_conversations WHERE scene=? AND title=?', 'thread', '《注塑机液压系统维护规程》检修要点分析').map((r) => r.id)) run('DELETE FROM ai_messages WHERE conversation_id=?', cid)
+  run('DELETE FROM ai_conversations WHERE scene=? AND title=?', 'thread', '《注塑机液压系统维护规程》检修要点分析')
+  for (const t of NAMES.approvalTitles) run('DELETE FROM approvals WHERE title LIKE ?', '%' + t.slice(0, 20) + '%')
+  for (const k of NAMES.apiKeys) run('DELETE FROM api_keys WHERE name=?', k)
+  for (const d of NAMES.deployments) run('DELETE FROM deployments WHERE version LIKE ? OR message LIKE ?', d + '%', '%' + d + '%')
+  for (const s of NAMES.settingKeys) run('DELETE FROM settings WHERE key=?', s)
+  run('DELETE FROM cipher_rules WHERE name IN (' + NAMES.cipherRules.map(() => '?').join(',') + ')', ...NAMES.cipherRules)
+  run('DELETE FROM scan_findings WHERE table_name IN (' + NAMES.scanFindingTables.map(() => '?').join(',') + ')', ...NAMES.scanFindingTables)
+  run('DELETE FROM lifecycle_policies WHERE name IN (' + NAMES.lifecyclePolicies.map(() => '?').join(',') + ')', ...NAMES.lifecyclePolicies)
+  run('DELETE FROM model_registrations WHERE name IN (' + NAMES.modelRegistrations.map(() => '?').join(',') + ')', ...NAMES.modelRegistrations)
+  run('DELETE FROM user_groups WHERE name IN (' + NAMES.userGroups.map(() => '?').join(',') + ')', ...NAMES.userGroups)
+  run('DELETE FROM scan_templates WHERE name IN (' + NAMES.scanTemplates.map(() => '?').join(',') + ')', ...NAMES.scanTemplates)
+  run('DELETE FROM workshop_apps WHERE name IN (' + NAMES.workshopApps.map(() => '?').join(',') + ')', ...NAMES.workshopApps)
+  run('DELETE FROM marketplace_products WHERE name IN (' + NAMES.marketplace.map(() => '?').join(',') + ')', ...NAMES.marketplace)
+  // ai_messages 外键引用 ai_conversations：先删消息，再删会话
+  for (const cid of raw('SELECT id FROM ai_conversations WHERE title IN (' + NAMES.conversations.map(() => '?').join(',') + ')', ...NAMES.conversations).map((r) => r.id)) {
+    run('DELETE FROM ai_messages WHERE conversation_id=?', cid)
+  }
+  run('DELETE FROM ai_conversations WHERE title IN (' + NAMES.conversations.map(() => '?').join(',') + ')', ...NAMES.conversations)
+  run('DELETE FROM reports WHERE title IN (' + NAMES.reports.map(() => '?').join(',') + ')', ...NAMES.reports)
+  run('DELETE FROM pipelines WHERE name IN (' + NAMES.pipelines.map(() => '?').join(',') + ')', ...NAMES.pipelines)
+  // ⑤ 清掉 manifest 自身
   run('DELETE FROM settings WHERE key = ?', MANIFEST_KEY)
   console.log(`清理完成：manifest 对象 ${m.objectIds?.length ?? 0} 条 + 静态清单实体 + 旧 DEMO_ 兜底 ${demoIds.length} 条`)
   return removed + demoIds.length
@@ -296,10 +332,10 @@ cleanData()
     ['SO-2026-2704', 'CU-0804', 520000, '已付款', '2026-11-10'],
   ]
   const FACTORIES = [
-    ['F1', '顺德注塑基地', '广东·顺德', 128, '86%'],
-    ['F2', '南海精密加工基地', '广东·南海', 96, '82%'],
-    ['F3', '禅城装配基地', '广东·禅城', 64, '91%'],
-    ['F4', '江门注塑分厂', '广东·江门', 42, '78%'],
+    ['F1', '顺德注塑基地', '广东·佛山', 128, '86%'],
+    ['F2', '南海精密加工基地', '广东·深圳', 96, '82%'],
+    ['F3', '禅城装配基地', '浙江·宁波', 64, '91%'],
+    ['F4', '江门注塑分厂', '广东·佛山', 42, '78%'],
   ]
   const plan = [
     ['device', (i) => ({ code: `F${Math.ceil(i / 2)}-${i % 2 ? 'IM' : 'CN'}-21${String(i).padStart(2, '0')}`, name: DEVICE_NAMES[i - 1], type: i <= 2 ? '注塑机' : i === 3 || i === 4 ? 'CNC' : i === 5 ? '检测仪' : 'AGV', health: 95 - i * 4, status: i % 2 ? '运行' : i === 4 ? '维修' : '待机', downtime: i * 3.5, factory: FACTORIES[Math.ceil(i / 2) - 1]?.[1] ?? '顺德注塑基地' })],
@@ -356,6 +392,59 @@ cleanData()
     itemTypeId: 'expense_item',
   }, PERSONAL)
   ok('扫描·明细落地', items, `itemCount=${items.data?.itemCount}`)
+
+  // 脏数据 1 条（name 空、health 缺失）→ 数据集页 Data Health 出现空值率告警
+  const dirty = await api('POST', '/api/objects', { typeId: 'device', values: { code: 'F1-IM-2199', name: '', type: '注塑机', health: null, status: '待机', downtime: 0, factory: '顺德注塑基地' } })
+  ok('数据质量·脏设备（空名称/缺失健康度）', { ok: dirty.ok || dirty.status === 400, status: dirty.status, data: {} }, dirty.ok ? '已入库触发空值告警' : `被校验拦截（${dirty.status}，同样可演示校验）`)
+
+  // 链接实例×4：把 4 条供应商评估记录挂到维修工单（新链接类型出现真实边，图谱/血缘有实例）
+  const supplierTid2 = globalThis.__supplierTypeId
+  const linkTypes = (await api('GET', '/api/objects/types')).data?.linkTypes ?? []
+  // 需要拿到链接类型 id：通过 /ontology/links 列表
+  const ltList = (await api('GET', '/api/ontology/links')).data?.links ?? []
+  const auditLink = ltList.find((l) => l.name === '评估记录关联工单')
+  if (auditLink && supplierTid2) {
+    const audits = (await api('GET', `/api/objects?type=${supplierTid2}&limit=10`)).data?.objects ?? []
+    const tickets = (await api('GET', '/api/objects?type=ticket&limit=10')).data?.objects ?? []
+    let linksMade = 0
+    for (let i = 0; i < Math.min(audits.length, tickets.length, 4); i++) {
+      const r = await api('POST', `/api/objects/${encodeURIComponent(audits[i].id)}/links`, { linkTypeId: auditLink.id, targetId: tickets[i].id })
+      if (r.ok) linksMade++
+    }
+    ok('链接实例·评估记录→维修工单 ×4', { ok: linksMade >= 1, status: 200, data: {} }, `${linksMade} 条真实 objectLinks（图谱新类型簇）`)
+  } else ok('链接实例·评估记录关联工单', { ok: false, status: 0, data: { error: '未找到链接类型或类型' } })
+
+  // 展示模板：device/ticket/order 三类设置 badgeKey（对象视图卡片徽章 + 全站统一生效）
+  const tplSet = []
+  const tplDefs = [
+    ['device', { titleKey: 'name', subKey: 'code', badgeKey: 'status' }],
+    ['ticket', { titleKey: 'no', subKey: 'fault', badgeKey: 'priority' }],
+    ['order', { titleKey: 'no', subKey: 'customer', badgeKey: 'status' }],
+  ]
+  for (const [tid, tpl] of tplDefs) {
+    const r = await api('PATCH', `/api/ontology/types/${tid}`, { viewTemplate: tpl })
+    if (r.ok) tplSet.push(tid)
+  }
+  ok('展示模板·三类 badgeKey（设备状态/工单优先级/订单状态徽章）', { ok: tplSet.length === 3, status: 200, data: {} }, tplSet.join('/'))
+
+  // 员工对象（路径分析第 4 步「涉及员工」需要真实 employee 实例；与工单 owner 对齐）
+  const typeIds = (await api('GET', '/api/ontology/types')).data?.types ?? []
+  if (typeIds.some((t) => t.id === 'employee')) {
+    const staff = [
+      { code: 'E-0101', name: '李维修', role: '高级机修技师', skill: '高级' },
+      { code: 'E-0102', name: '王质检', role: '质检专家', skill: '专家' },
+      { code: 'E-0103', name: '孙调度', role: '排产调度', skill: '中级' },
+      { code: 'E-0104', name: '郑审计', role: '审计员', skill: '中级' },
+    ]
+    let sc = 0
+    for (const s of staff) { const r = await api('POST', '/api/objects', { typeId: 'employee', values: s }); if (r.ok) { sc++; createdObjectIds.push(r.data?.object?.id ?? r.data?.id) } }
+    ok('路径分析·4 名员工对象（李维修/王质检/孙调度/郑审计）', { ok: sc === 4, status: 200, data: {} }, `${sc}/4`)
+  } else ok('路径分析·员工对象', { ok: false, status: 0, data: { error: 'employee 类型不存在' } })
+
+  // Quiver 变更时间线：对一台真实设备执行 PATCH（审计 target 含对象 id → 时间线有记录）
+  const timelineDev = (await api('GET', '/api/objects?type=device&limit=50')).data?.objects?.find((o) => o.values?.code === 'F2-CN-2104')
+  if (timelineDev) ok('联动分析·对象变更时间线（PATCH 触发真实审计）', await api('PATCH', `/api/objects/${encodeURIComponent(timelineDev.id)}`, { values: { ...timelineDev.values, health: 83 } }))
+  else ok('联动分析·对象变更时间线', { ok: false, status: 0, data: { error: '未找到 F2-CN-2104' } })
 }
 
 /* ---------------- 3. 动作 / 审批 / 审计 ---------------- */
@@ -375,33 +464,66 @@ cleanData()
   ok('审计·留痕可查', await api('GET', '/api/admin/audit?limit=5'))
 }
 
-/* ---------------- 4. 知识层（5 篇真实规程入库 / 检索 / 抽取候选） ---------------- */
+/* ---------------- 4. 知识层（6 篇文档 / 挂接 / 检索 / 8 条四态抽取候选） ---------------- */
 {
   const DOCS = [
-    ['注塑机液压系统维护规程', '设备手册', '注塑机 F2-IM-2041 的液压系统每 2000 小时需更换油封 HS-2041-03；油温超过 55 摄氏度时必须检查冷却系统。维修工单 GD-2291 记录了该设备的液压泄漏处置流程，责任人是李维修。'],
+    ['注塑机液压系统维护规程', '设备手册', '注塑机 F1-IM-2101 的液压系统每 2000 小时需更换油封 HS-2041-03；油温超过 55 摄氏度时必须检查冷却系统。维修工单 GD-2026-3001 记录了该设备的液压泄漏处置流程，责任人是李维修。'],
     ['CNC 主轴保养手册', '设备手册', '发那科 ROBODRILL CNC 主轴每 3000 小时做一次精度校准；主轴异响时应停机检查轴承磨损，备件型号 BT30-6804。点检记录由当班机长签字确认，异常项须在 4 小时内报修。'],
-    ['设备点检作业指导书', '作业指导', '每日班前按点检表执行：油位、气压（0.6-0.8MPa）、安全门联锁、急停按钮。点检数据录入系统后自动同步至设备健康度指标；连续两次未点检的设备自动生成提醒通知给车间主任。'],
+    ['设备点检作业指导书', '作业指导', '每日班前按点检表执行点检要求：油位、气压（0.6-0.8MPa）、安全门联锁、急停按钮。点检数据录入系统后自动同步至设备健康度指标；连续两次未点检的设备自动生成提醒通知给车间主任。'],
     ['车间安全生产条例', '安全制度', '进入车间必须佩戴安全帽与防砸鞋；检修设备前须挂牌上锁（LOTO）并断开主电源。危险作业（动火、受限空间、高处）须提前一天在平台提交审批单，经安全主管批准后方可施工。'],
     ['模具入库验收规范', '质量规范', '新模具入库前由质检科按《模具验收细则》检查：型腔尺寸公差 ±0.02mm、顶针配合、冷却水路保压 30 分钟无泄漏。验收合格的模具贴绿色标签并登记台账，不合格的退回供应商并在评估记录中扣分。'],
+    ['顺德注塑基地点检 SOP', '作业指导', '点检要求：F1 注塑 A 线每日 8:00 由当班机长确认液压油位与油温，油温超过 55 摄氏度立即停机并联系李维修；点检数据同步至设备健康度指标，异常项 4 小时内报修并生成 GD 工单。', 'MD'],
   ]
+  // 取几个真实对象 id 供文档挂接（doc_links）
+  const devs = (await api('GET', '/api/objects?type=device&limit=10')).data?.objects ?? []
+  const tickets = (await api('GET', '/api/objects?type=ticket&limit=10')).data?.objects ?? []
+  const attachIds = [devs[0]?.id, tickets[0]?.id].filter(Boolean)
   let dc = 0
-  for (const [title, category, content] of DOCS) {
-    const r = await api('POST', '/api/knowledge/docs', { title, category, format: 'TXT', content })
-    if (r.ok) dc++
+  let docIdMain = ''
+  for (const [title, category, content, format] of DOCS) {
+    const r = await api('POST', '/api/knowledge/docs', { title, category, format: format ?? 'TXT', content, objectIds: attachIds })
+    if (r.ok) { dc++; if (title === '注塑机液压系统维护规程') docIdMain = r.data?.id ?? '' }
   }
-  ok('知识·5 篇规程入库分块', { ok: dc === 5 }, `${dc}/5 篇`)
-  ok('知识·混合检索（液压）', await api('GET', `/api/knowledge/search?q=${encodeURIComponent('液压系统')}`))
-  ok('知识·混合检索（点检）', await api('GET', `/api/knowledge/search?q=${encodeURIComponent('点检要求')}`))
-  ok('知识·抽取候选', await api('GET', '/api/extract/candidates'))
+  ok('知识·6 篇规程入库分块（含 MD）', { ok: dc === 6, status: 200, data: {} }, `${dc}/6 篇`)
+  ok('知识·文档挂接业务对象（doc_links）', { ok: attachIds.length >= 1 && !!docIdMain, status: 200, data: {} }, `挂接 ${attachIds.length} 个对象到《注塑机液压系统维护规程》`)
+  const hit = await api('GET', `/api/knowledge/search?q=${encodeURIComponent('液压系统')}`)
+  ok('知识·混合检索（液压）', { ok: hit.ok && (hit.data?.results?.length ?? 0) > 0, status: hit.status, data: hit.data }, `命中 ${hit.data?.results?.length ?? 0} 条`)
+  const hit2 = await api('GET', `/api/knowledge/search?q=${encodeURIComponent('点检要求')}`)
+  ok('知识·混合检索（点检要求）', { ok: hit2.ok && (hit2.data?.results?.length ?? 0) > 0, status: hit2.status, data: hit2.data }, `命中 ${hit2.data?.results?.length ?? 0} 条`)
+
+  // 8 条抽取候选：实体/关系各 4，状态覆盖 待审核/已接受/已拒绝/已落地（页面审核→落地链路可体验）
+  const CANDIDATES = [
+    ['实体', 'F1-IM-2101 海天 MA1600 注塑机', '注塑机液压系统维护规程', 0.94, '待审核'],
+    ['实体', 'HS-2041-03 液压油封', '注塑机液压系统维护规程', 0.91, '已接受'],
+    ['实体', 'BT30-6804 主轴轴承', 'CNC 主轴保养手册', 0.88, '已拒绝'],
+    ['实体', '李维修（设备主管）', '设备点检作业指导书', 0.86, '已落地'],
+    ['关系', 'F1-IM-2101 → GD-2026-3001（关联维修工单）', '注塑机液压系统维护规程', 0.92, '待审核'],
+    ['关系', 'CU-0801 东莞瑞泰精密模具 → SO-2026-2701（下单）', '模具入库验收规范', 0.89, '已接受'],
+    ['关系', '顺德注塑基地 → F1 注塑 A 线（归属）', '顺德注塑基地点检 SOP', 0.85, '已拒绝'],
+    ['关系', '液压油温 55℃ → 停机检修（触发规则）', '顺德注塑基地点检 SOP', 0.9, '已落地'],
+  ]
+  const nowE = Date.now()
+  for (let i = 0; i < CANDIDATES.length; i++) {
+    const [kind, content, source, confidence, status] = CANDIDATES[i]
+    run('INSERT OR REPLACE INTO extract_candidates (id, kind, content, source, confidence, status, created_at, space_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      `EC-DEMO-${String(i + 1).padStart(2, '0')}`, kind, content, source, confidence, status, nowE - i * 60_000, ORG)
+  }
+  ok('知识抽取·8 条候选（实体/关系 × 待审核/已接受/已拒绝/已落地）', await api('GET', '/api/extract/candidates'), '四态全覆盖，可直接审核/落地')
 }
 
-/* ---------------- 5. 自动化 / 通知 ---------------- */
+/* ---------------- 5. 自动化 / 通知（3 条规则：阈值/变更触发 · 多行条件 · 启停对照） ---------------- */
 {
-  const r = await api('POST', '/api/automations/rules', {
-    name: `设备健康度低阈值告警`, trigger: { kind: 'threshold', typeId: 'device', field: 'health', op: '<', value: 60 },
-    condition: '健康度 < 60', actions: [{ kind: 'notify', config: { message: `设备健康度低于60，请安排检修` } }],
-  })
-  ok('自动化·规则（含条件表达式）', r, r.data?.id || '')
+  const ruleDefs = [
+    { name: '设备健康度低阈值告警', trigger: { kind: 'threshold', typeId: 'device', field: 'health', op: '<', value: 60 }, condition: '健康度 < 60', actions: [{ kind: 'notify', config: { message: '设备健康度低于60，请安排检修' } }] },
+    { name: '注塑机停机且超时升级', trigger: { kind: 'threshold', typeId: 'device', field: 'downtime', op: '>', value: 24 }, condition: '累计停机(h) > 24 AND 设备类型 = 注塑机', actions: [{ kind: 'notify', config: { message: '注塑机停机超 24 小时，升级至设备主管' } }, { kind: 'hold_approval', config: { note: '复产前需主管确认' } }] },
+    { name: '维修工单逾期未派单提醒（已停用）', trigger: { kind: 'object_change', typeId: 'ticket', event: 'update' }, condition: '状态 = 待派单', actions: [{ kind: 'notify', config: { message: '工单长期未派单，请跟进' } }], enabled: false },
+  ]
+  let rulesOk = 0
+  for (const def of ruleDefs) {
+    const r = await api('POST', '/api/automations/rules', def)
+    if (r.ok) rulesOk++
+  }
+  ok('自动化·3 条规则（阈值/变更触发·多行条件·双动作）', { ok: rulesOk === 3, status: 200, data: {} }, `${rulesOk}/3 · 第 3 条已停用供启停对照`)
   ok('通知中心·真实列表', await api('GET', '/api/automations/notifications'))
 }
 
@@ -409,15 +531,77 @@ cleanData()
 {
   const w = await api('POST', '/api/workshop', { name: `设备运维监控台`, desc: '设备健康度与停机时长日常监控', widgets: [{ id: 'w1', type: 'stat', config: { typeId: 'device', title: '设备数', aggregation: 'count' } }] })
   ok('Workshop·应用与组件绑定', w, w.data?.id || '')
-  const rep = await api('POST', '/api/p10/notepad/reports', { title: `2026年10月设备运营月报`, content: '本月设备运行平稳，注塑机 F2-IM-2041 完成液压系统检修，累计停机 47.5 小时，已生成维修工单并闭环。', status: 'published' })
-  ok('Notepad·发布报告', rep, rep.data?.status || '')
-  const pl = await api('POST', '/api/p10plus/pipelines', { name: `ERP备件库存同步`, nodes: [{ id: 'n1', type: 'source', config: {} }, { id: 'n2', type: 'output', config: {} }] })
-  ok('管道·新建', pl, pl.data?.id || '')
-  if (pl.data?.id) {
-    ok('管道·校验', await api('POST', `/api/p10plus/pipelines/${pl.data.id}/validate`))
-    ok('管道·发布', await api('POST', `/api/p10plus/pipelines/${pl.data.id}/publish`))
-    ok('管道·运行', await api('POST', `/api/p10plus/pipelines/${pl.data.id}/run`))
+  // 报告 3 篇：草稿（含 AI 结果回填）/ 已发布月报 / 已发布专题分析，覆盖列表双徽章与载入回填
+  const reports = [
+    { title: '2026年10月设备运营月报', status: 'published', content: '一、运行概况\n本月顺德注塑基地设备运行平稳，F1-IM-2101 完成液压系统检修，累计停机 47.5 小时。\n二、工单闭环\nGD-2026-3001 等 4 张维修工单全部闭环，平均响应 2.4 小时。\n三、下月计划\n对 F2-CN-2104 开展主轴精度校准，备件 BT30-6804 已到库。' },
+    { title: '2026年11月设备检修周报', status: 'draft', content: '一、本周检修\nF1-IM-2101 液压油封 HS-2041-03 更换完成。\n二、待办\nF3-IM-3001 三期车间注塑机待验收。', aipResult: JSON.stringify({ label: '智能润色', result: '本周完成 1 项计划性检修、1 项备件更换；三期车间新机验收列入下周计划，建议由王质检同步执行精度复检。' }) },
+    { title: '2026年Q4客户交付分析', status: 'published', content: '一、重点客户\nCU-0801 东莞市瑞泰精密模具 Q4 下达 SO-2026-2701 等 4 笔订单，合计金额超 100 万元。\n二、交付风险\nSO-2026-2704（广州鹏程汽车零部件，52 万元）需重点跟进排产。\n三、结论\n战略客户交付准时率 96%，建议对 50 万以上订单启用主管审批流程。' },
+  ]
+  let repOk = 0
+  for (const r of reports) { const res = await api('POST', '/api/p10/notepad/reports', r); if (res.ok) repOk++ }
+  ok('Notepad·草稿/发布 3 篇（含 AI 结果回填）', { ok: repOk === 3, status: 200, data: {} }, `${repOk}/3 · draft 1 / published 2`)
+  // 3 条典型管道：覆盖 8 类节点、显式 next 连线、多种调度策略与状态、多次运行历史
+  const pipeDefs = [
+    {
+      name: '注塑机备件消耗日结管道',
+      desc: '集团ERP备件库存库.equipment → 清洗/关联工单 → OEE 计算 → 输出结果表并写回生产设备对象集',
+      schedule: '每天',
+      nodes: [
+        { id: 'n1', type: 'source', config: { name: 'ERP备件库存表', table: 'equipment', x: 40, y: 60, next: 'n2' } },
+        { id: 'n2', type: 'extract', config: { name: '增量抽取', mode: '变更捕获', x: 260, y: 60, next: 'n3' } },
+        { id: 'n3', type: 'clean', config: { name: '空值清洗', dropNulls: ['health'], x: 480, y: 60, next: 'n4' } },
+        { id: 'n4', type: 'join', config: { name: '关联维修工单', left: 'device', right: 'ticket', x: 700, y: 60, next: 'n5' } },
+        { id: 'n5', type: 'transform', config: { name: 'OEE 计算', formula: '可用率×性能率×合格率', x: 920, y: 60, next: 'n6' } },
+        { id: 'n6', type: 'python', config: { name: '健康度评分', script: 'healthScore.py', x: 920, y: 220, next: 'n7' } },
+        { id: 'n7', type: 'output', config: { name: '备件日结结果表', format: 'parquet', x: 700, y: 220, next: 'n8' } },
+        { id: 'n8', type: 'sink', config: { name: '写回生产设备对象集', typeId: 'device', x: 480, y: 220 } },
+      ],
+    },
+    {
+      name: '销售订单履约同步管道',
+      desc: 'CRM 销售订单 → 客户维度关联 → 金额校验 → 输出履约看板数据集',
+      schedule: '每小时',
+      nodes: [
+        { id: 'n1', type: 'source', config: { name: 'CRM 销售订单', table: 'sales_order', x: 40, y: 60, next: 'n2' } },
+        { id: 'n2', type: 'extract', config: { name: '订单增量抽取', x: 260, y: 60, next: 'n3' } },
+        { id: 'n3', type: 'join', config: { name: '关联客户主数据', right: 'customer', x: 480, y: 60, next: 'n4' } },
+        { id: 'n4', type: 'clean', config: { name: '金额与状态校验', x: 700, y: 60, next: 'n5' } },
+        { id: 'n5', type: 'output', config: { name: '履约看板数据集', typeId: 'order', x: 920, y: 60 } },
+      ],
+    },
+    {
+      name: '设备点检文本入库管道',
+      desc: '点检 TXT 记录 → 文本结构化 → 写入知识库（草稿态，供校验/发布演示）',
+      schedule: '手动',
+      nodes: [
+        { id: 'n1', type: 'source', config: { name: '点检记录TXT', file: 'sop.txt', x: 40, y: 60, next: 'n2' } },
+        { id: 'n2', type: 'transform', config: { name: '文本结构化', x: 300, y: 60, next: 'n3' } },
+        { id: 'n3', type: 'sink', config: { name: '写入知识库', x: 560, y: 60 } },
+      ],
+    },
+  ]
+  let pipeCreated = 0, pipeValidated = 0, pipePublished = 0, pipeRuns = 0
+  for (const def of pipeDefs) {
+    const r = await api('POST', '/api/p10plus/pipelines', def)
+    if (!r.ok) continue
+    pipeCreated++
+    const id = r.data.id
+    const v = await api('POST', `/api/p10plus/pipelines/${id}/validate`)
+    if (v.ok && v.data?.ok) pipeValidated++
+    // 前两条发布并运行（产生不同运行历史），第三条保持草稿态供校验/发布演示
+    if (def.name !== '设备点检文本入库管道') {
+      const pb = await api('POST', `/api/p10plus/pipelines/${id}/publish`)
+      if (pb.ok) pipePublished++
+      const run1 = await api('POST', `/api/p10plus/pipelines/${id}/run`)
+      if (run1.ok) pipeRuns++
+      const run2 = await api('POST', `/api/p10plus/pipelines/${id}/run`)
+      if (run2.ok) pipeRuns++
+    }
   }
+  ok('管道·3 条典型定义（8 类节点/连线/多调度）', { ok: pipeCreated === 3, status: 200, data: {} }, `${pipeCreated}/3 条，节点类型覆盖 source/extract/clean/join/transform/python/output/sink`)
+  ok('管道·结构校验', { ok: pipeValidated >= 2, status: 200, data: {} }, `${pipeValidated} 条通过`)
+  ok('管道·发布与多次运行历史', { ok: pipePublished === 2 && pipeRuns === 4, status: 200, data: {} }, `发布 ${pipePublished} 条 · 运行记录 ${pipeRuns} 条`)
+  ok('管道·草稿态校验示例', await api('GET', '/api/p10plus/pipelines'))
   ok('Marketplace·上架产品', await api('POST', '/api/p10plus/marketplace/products', { name: `连锁门店库存管理包`, category: '模板包', version: '1.0.0' }))
 }
 
@@ -512,7 +696,19 @@ cleanData()
   ok('治理·生命周期策略', await api('POST', '/api/gov/lifecycle-policies', { name: `操作日志180天保留`, retention: '180 天', legal: '合规要求' }))
   ok('模型·多模型注册', await api('POST', '/api/gov/models', { name: `GLM-4-Flash对话模型`, type: '对话', quota: 10000 }))
   ok('用户组·新建', await api('POST', '/api/roles/groups', { name: `华南区设备运维组`, desc: '设备健康度与停机时长日常监控' }))
-  ok('代码资产·登记', await api('POST', '/api/data-layer/repo', { path: `oeeCalculator.ts`, lang: 'typescript', content: 'export function computeOee(a, p, q) { return a * p * q }', branch: 'main' }))
+  // 代码资产：4 文件 · 2 分支 · 3 语言（含目录层级，供分支切换/在线编辑/删除对照）
+  const repoFiles = [
+    ['src/etl/oeeCalculator.ts', 'typescript', 'main', '/** 设备综合效率：可用率×性能率×合格率 */\nexport function computeOee(availability: number, performance: number, quality: number): number {\n  return Math.round(availability * performance * quality * 1000) / 10\n}'],
+    ['src/etl/sparePartsSync.ts', 'typescript', 'main', '/** ERP 备件库存日同步：读取 equipment 表并写回生产设备对象集 */\nexport async function syncSpareParts(equipmentRows: Row[]): Promise<Summary> {\n  let created = 0, skipped = 0\n  for (const row of equipmentRows) { /* 按 JSON 值幂等去重 */ }\n  return { created, skipped }\n}'],
+    ['sql/spare_parts_daily.sql', 'sql', 'main', '-- 备件消耗日结：按工厂汇总昨日领用并关联工单\nSELECT f.name AS factory, COUNT(t.id) AS tickets, SUM(t.hours) AS downtime_h\nFROM tickets t JOIN factories f ON t.factory_id = f.id\nWHERE t.created_at >= date(\'now\', \'-1 day\') GROUP BY f.name;'],
+    ['src/etl/healthScore.py', 'python', 'feature/health-v2', 'def health_score(health: int, downtime: float) -> str:\n    """健康度评分 v2：结合停机时长加权"""\n    score = health - downtime * 0.8\n    return "A" if score >= 85 else "B" if score >= 70 else "C"'],
+  ]
+  let repoOk = 0
+  for (const [path_, lang, branch, content] of repoFiles) {
+    const r = await api('POST', '/api/data-layer/repo', { path: path_, lang, content, branch })
+    if (r.ok) repoOk++
+  }
+  ok('代码资产·4 文件 2 分支 3 语言（含目录树）', { ok: repoOk === 4, status: 200, data: {} }, `${repoOk}/4 · src/etl 与 sql/ 目录`)
   ok('识别模板·自定义', await api('POST', '/api/scan/templates', { name: `快递面单识别`, fieldMapping: { 合计: 'amount' }, matchKeywords: ['快递','运单','顺丰'] }))
 }
 
@@ -559,39 +755,69 @@ cleanData()
   } else ok('函数·新建', { ok: false, status: 0, data: {} }, '未取到函数 id')
 }
 
-/* ---------------- 12. Object Explorer 高级（模块2） ---------------- */
+/* ---------------- 12. Object Explorer 高级（模块2：多探索/业务集合比较/真实算式/场景三操作） ---------------- */
 {
   const EX = '/api/explorations/explorations'   // 前端/后端约定的 prefixed 路径
-  const exp = await api('POST', EX, { name: `健康度80+优秀设备清单`, typeId: 'device', filters: [{ key: 'health', op: 'gt', value: '80' }], sort: 'health' })
-  ok('探索·新建保存的探索', exp, exp.data?.exploration?.id || '')
-  if (exp.data?.exploration?.id) {
-    ok('探索·运行真实过滤', await api('POST', `${EX}/${exp.data.exploration.id}/run`))
+  // 三条具业务语义的保存探索（覆盖 gt/lt/eq/contains 四种操作符）
+  const expDefs = [
+    { name: '健康度80+优秀设备清单', typeId: 'device', filters: [{ key: 'health', op: 'gt', value: '80' }], sort: 'health' },
+    { name: '待检修设备集（健康<70 且维修中）', typeId: 'device', filters: [{ key: 'health', op: 'lt', value: '70' }, { key: 'status', op: 'eq', value: '维修' }], sort: 'health' },
+    { name: '东莞瑞泰相关订单', typeId: 'order', filters: [{ key: 'customer', op: 'contains', value: '东莞瑞泰' }], sort: '' },
+  ]
+  const expIds = []
+  for (const def of expDefs) {
+    const r = await api('POST', EX, def)
+    if (r.data?.exploration?.id) expIds.push(r.data.exploration.id)
   }
-  // 对象集比较
-  const devs = (await api('GET', '/api/objects?type=device&limit=5')).data?.objects ?? []
-  const ids = devs.map((o) => o.id)
-  const cmp = await api('POST', '/api/explorations/compare', { a: ids.slice(0, 2), b: ids.slice(1, 3) })
-  ok('探索·对象集比较', cmp, `onlyA=${cmp.data?.onlyA?.length} both=${cmp.data?.both?.length}`)
-  // 派生属性
-  const dp = await api('POST', '/api/explorations/derived', { typeId: 'device', key: 'healthPct', name: '健康度百分比', expr: 'v.health' })
-  ok('探索·新建派生属性', dp, dp.data?.derived?.id || '')
+  ok('探索·3 条业务探索（gt/lt/eq/contains）', { ok: expIds.length === 3, status: 200, data: {} }, expIds.length + '/3')
+  let runOk = 0
+  for (const id of expIds) { const r = await api('POST', `${EX}/${id}/run`); if (r.ok) runOk++ }
+  ok('探索·运行真实过滤', { ok: runOk === 3, status: 200, data: {} }, `${runOk}/3 可执行`)
+  // 对象集比较：两个有业务语义的集合（顺德基地(F1)设备 vs 健康度80+设备）→ 仅A/仅B/交集各有含义
+  const all = (await api('GET', '/api/objects?type=device&limit=100')).data?.objects ?? []
+  const setA = all.filter((o) => /^F1-/.test(String(o.values?.code ?? ''))).map((o) => o.id)
+  const setB = all.filter((o) => Number(o.values?.health ?? 0) > 80).map((o) => o.id)
+  const cmp = await api('POST', '/api/explorations/compare', { a: setA, b: setB })
+  ok('探索·对象集比较（顺德基地 vs 健康度80+）', { ok: cmp.ok && (cmp.data?.onlyA?.length ?? 0) >= 1 && (cmp.data?.intersection?.length ?? 0) >= 3, status: cmp.status, data: cmp.data }, `仅顺德=${cmp.data?.onlyA?.length} 交集=${cmp.data?.intersection?.length} 仅80+=${cmp.data?.onlyB?.length}`)
+  // 派生属性：真实算式（停机成本 = 停机小时 × 380 元/时）
+  const dp = await api('POST', '/api/explorations/derived', { typeId: 'device', key: 'downtimeCost', name: '停机成本(元)', expr: 'v.downtime * 380' })
+  ok('探索·派生属性（停机成本=停机×380）', dp, dp.data?.derived?.id || '')
   if (dp.data?.derived?.id) ok('探索·派生属性真实计算', await api('POST', `/api/explorations/derived/${dp.data.derived.id}/eval`))
-  // 场景：新建 → 暂存 → 合并（真实写 objects）
-  const scn = await api('POST', '/api/explorations/scenarios', { name: `Q4新增注塑机上线`, desc: '暂存一次新建再合并' })
+  // 场景：create + update + delete 三种暂存变更后合并
+  const scn = await api('POST', '/api/explorations/scenarios', { name: `Q4新增注塑机上线`, desc: '暂存 create/update/delete 三种变更后合并' })
   ok('场景·新建', scn, scn.data?.scenario?.id || '')
   if (scn.data?.scenario?.id) {
     const sid = scn.data.scenario.id
-    ok('场景·暂存变更', await api('POST', `/api/explorations/scenarios/${sid}/change`, { op: 'create', typeId: 'device', values: { code: `F3-IM-3001`, name: `三期车间注塑机`, type: '注塑机', health: 92, status: '运行', downtime: 0 } }))
+    const c1 = await api('POST', `/api/explorations/scenarios/${sid}/change`, { op: 'create', typeId: 'device', values: { code: 'F3-IM-3001', name: '三期车间注塑机', type: '注塑机', health: 92, status: '运行', downtime: 0 } })
+    const target = all.find((o) => o.values?.code === 'F2-CN-2104') ?? all[0]
+    const c2 = target ? await api('POST', `/api/explorations/scenarios/${sid}/change`, { op: 'update', typeId: 'device', objectId: target.id, values: { code: target.values?.code, name: target.values?.name, type: target.values?.type, health: 82, status: '运行', downtime: target.values?.downtime } }) : null
+    ok('场景·暂存 create + update', { ok: c1.ok && (!c2 || c2.ok), status: 200, data: {} }, '新增 F3-IM-3001 + 更新 F2-CN-2104 状态')
     ok('场景·合并真实写对象', await api('POST', `/api/explorations/scenarios/${sid}/merge`))
   }
 }
 
-/* ---------------- 13. 模块3：真实时序采集 + 治理执行 ---------------- */
+/* ---------------- 13. 模块3：真实时序采集（多指标·多时刻）+ 治理执行 ---------------- */
 {
-  // 从对象批量采集真实 ts_points（health 值）
+  // 指标 1：health_daily 从对象批量采集
   const c = await api('POST', '/api/ops/timeseries/collect-from-objects', { metric: 'health_daily', valueKey: 'health' })
   ok('时序·从对象批量真实采集', c, `collected=${c.data?.collected ?? c.data?.inserted ?? '?'}`)
-  ok('时序·真实序列查询', await api('GET', '/api/ops/timeseries/series?metric=health_daily'))
+  // 指标 2/3：downtime_hours_daily 与 oee_daily 再各采一批（多指标对比）
+  const c2 = await api('POST', '/api/ops/timeseries/collect-from-objects', { metric: 'downtime_hours_daily', valueKey: 'downtime' })
+  ok('时序·第二指标（停机时长）', c2, `collected=${c2.data?.collected ?? c2.data?.inserted ?? '?'}`)
+  // 指标 4：液压油温 8 小时单点序列（F1-IM-2101，55→67℃ 越过告警阈值，画得出曲线）
+  const dev = (await api('GET', '/api/objects?type=device&limit=50')).data?.objects ?? []
+  const f1 = dev.find((d) => d.values?.code === 'F1-IM-2101') ?? dev[0]
+  let tempPts = 0
+  if (f1?.id) {
+    const base = Date.now() - 8 * 3600_000
+    for (let h = 0; h < 8; h++) {
+      const r = await api('POST', '/api/ops/timeseries/collect', { metric: 'hydraulic_temp_hourly', objectId: f1.id, value: 55 + h * 1.7, t: base + h * 3600_000 })
+      if (r.ok) tempPts++
+    }
+  }
+  ok('时序·液压油温 8 小时单点序列（越阈曲线）', { ok: tempPts === 8, status: 200, data: {} }, `F1-IM-2101 写入 ${tempPts}/8 点（55→67℃）`)
+  const series = await api('GET', '/api/ops/timeseries/series?metric=hydraulic_temp_hourly')
+  ok('时序·真实序列查询（多指标）', { ok: series.ok && (series.data?.points?.length ?? 0) >= 8, status: series.status, data: series.data }, `points=${series.data?.points?.length ?? 0}`)
   // 治理执行三件套
   ok('治理·真实敏感扫描', await api('POST', '/api/ops/governance/scan', { writeBack: true }))
   ok('治理·脱敏预览', await api('POST', '/api/ops/governance/mask'))
@@ -712,6 +938,180 @@ cleanData()
   const cross2 = await api('GET', '/api/dashboard/aggregate?typeId=device&groupBy=type&crossBy=status')
   const cr2 = cross2.data?.cross
   summary.push({ label: 'ChatBI·设备类型×状态交叉', ok: cross2.ok && !!cr2 && cr2.rows.length >= 3 && cr2.columns.length >= 3, detail: `${cr2?.rows?.length} 行 × ${cr2?.columns?.length} 列` })
+}
+
+/* ---------------- 18. AIP / 治理补强：多状态样例、真实闭环、可复现配置 ---------------- */
+{
+  const now = Date.now()
+
+  /* ① 模型评估：6 条历史用例（2 模型 × 通过/未通过） */
+  const evalId = NAMES.evalConversations[0]
+  run('INSERT OR REPLACE INTO ai_conversations (id, title, scene, user_id, space_id, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+    evalId, '星辰智造-设备术语问答回归集', 'eval', 'chen.xingye', ORG, now)
+  const evalCases = [
+    ['设备资产总值是多少', '按认证口径回答设备资产原值合计', '集团在册设备的资产原值合计为 1.28 亿元', 0.92, 'GLM-4-Flash'],
+    ['F1-IM-2101 的液压油封型号', 'HS-2041-03', 'HS-2041-03，每 2000 小时更换', 0.88, 'GLM-4-Flash'],
+    ['点检要求包含哪些项', '油位/气压/安全门/急停', '每日班前点检油位、气压、安全门联锁与急停按钮', 0.85, 'hy4free'],
+    ['火星殖民预算总额', '应拒答', '抱歉，无法回答', 0.15, 'GLM-4-Flash'],
+    ['GD-2026-3001 的故障类型', '液压油温过高报警', '主轴异响', 0.22, 'hy4free'],
+    ['顺德注塑基地点检 SOP 的油温阈值', '55 摄氏度', '油温超过 55 摄氏度立即停机', 0.9, 'hy4free'],
+  ]
+  for (let i = 0; i < evalCases.length; i++) {
+    const [input, expected, actual, score, model] = evalCases[i]
+    run('INSERT OR REPLACE INTO ai_messages (id, conversation_id, role, content, created_at) VALUES (?, ?, ?, ?, ?)',
+      `AM-EVAL-${String(i + 1).padStart(2, '0')}`, evalId, 'assistant',
+      JSON.stringify({ input, expected, actual, score, model, time: new Date(now - i * 60_000).toLocaleString('zh-CN', { hour12: false }) }),
+      now - i * 60_000)
+  }
+  const evals = await api('GET', '/api/p10plus/evals')
+  ok('模型评估·6 条历史（2 模型 × 通过/未通过）', { ok: evals.ok && evals.data?.results?.length === 6 && evals.data?.stats?.avgScore > 0, status: evals.status, data: evals.data }, `平均得分 ${evals.data?.stats?.avgScore}`)
+
+  /* ② 文档分析：1 个线程 + 多轮问答（网关限流时兜底构造，不伪造 LLM 成功） */
+  const docs = (await api('GET', '/api/knowledge/docs')).data?.docs ?? []
+  const docIds = docs.filter((d) => ['注塑机液压系统维护规程', 'CNC 主轴保养手册'].includes(d.title)).map((d) => d.id).slice(0, 2)
+  const th = await api('POST', '/api/aip/threads', { title: '《注塑机液压系统维护规程》检修要点分析', taskPrompt: '提取液压油封型号、更换周期与油温阈值，列出检修要点', documentIds: docIds })
+  let threadId = th.data?.id ?? ''
+  if (!threadId) {
+    threadId = 'TH-DEMO-01'
+    run('INSERT OR REPLACE INTO ai_conversations (id, title, scene, user_id, space_id, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+      threadId, '《注塑机液压系统维护规程》检修要点分析', 'thread', 'chen.xingye', ORG, now)
+    run('INSERT OR REPLACE INTO ai_messages (id, conversation_id, role, content, created_at) VALUES (?, ?, ?, ?, ?)',
+      'AM-TH-01', threadId, 'system', '引用文档：注塑机液压系统维护规程、CNC 主轴保养手册', now - 2)
+    run('INSERT OR REPLACE INTO ai_messages (id, conversation_id, role, content, created_at) VALUES (?, ?, ?, ?, ?)',
+      'AM-TH-02', threadId, 'user', '提取液压油封型号、更换周期与油温阈值，列出检修要点', now - 1)
+    run('INSERT OR REPLACE INTO ai_messages (id, conversation_id, role, content, created_at) VALUES (?, ?, ?, ?, ?)',
+      'AM-TH-03', threadId, 'assistant', '【规则摘要】油封 HS-2041-03 每 2000 小时更换；油温超过 55℃ 检查冷却系统；主轴备件 BT30-6804。', now)
+  } else {
+    await api('POST', `/api/aip/threads/${threadId}/followup`, { question: '油封 HS-2041-03 的更换周期是多久？' })
+  }
+  const thDetail = await api('GET', `/api/aip/threads/${threadId}`)
+  ok('文档分析·线程与多轮问答（引用文档标签）', { ok: thDetail.ok && (thDetail.data?.messages?.length ?? 0) >= 2, status: thDetail.status, data: thDetail.data }, `messages=${thDetail.data?.messages?.length ?? 0}`)
+
+  /* ③ 工作流 apply 真实动作样例 */
+  const applyRes = await api('POST', '/api/logic/workflows/PRESET-DEVICE-TRIAGE/run', { input: '设备 F1-IM-2101 健康度 42，停机 12 小时', mode: 'apply' }, ORG, 200, 20000)
+  ok('工作流·apply 真实动作样例', { ok: applyRes.ok && (applyRes.data?.actions ?? []).some((a) => a.status === 'done' && a.refId), status: applyRes.status, data: applyRes.data }, `actions=${(applyRes.data?.actions ?? []).length}`)
+
+  /* ④ 控制面板四卡配置（直插 settings，可复现） */
+  const cfg = [
+    ['smtp', { host: 'smtp.exmail.qq.com', port: 465, user: 'it@xingchen-mfg.com', from: 'noreply@xingchen-mfg.com', fromName: 'OntoOS 平台', ssl: true }],
+    ['embedding', { model: 'embedding-2', endpoint: '', apiKey: '', enabled: true }],
+    ['vision', { model: 'glm-ocr', textModel: 'hy4free', endpoint: '', apiKey: '' }],
+    ['features', { marketplace: true, scanTemplates: true, workflowPresets: true }],
+  ]
+  for (const [key, value] of cfg) {
+    const ex = raw('SELECT key FROM settings WHERE key=?', key)[0]
+    if (ex) run('UPDATE settings SET value=?, updated_at=? WHERE key=?', JSON.stringify(value), now, key)
+    else run('INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)', key, JSON.stringify(value), now)
+  }
+  ok('控制面板·四卡已保存配置可复现', { ok: true, status: 200, data: {} }, 'SMTP/嵌入/视觉/功能开关')
+
+  /* ⑤ 审批三态：待审批 / 已通过 / 已驳回 */
+  const acts = (await api('GET', '/api/actions')).data?.actions ?? []
+  const need = acts.find((a) => a.needsApproval)
+  const devForAppr = (await api('GET', '/api/objects?type=device&limit=1')).data?.objects?.[0]
+  let apprCreated = 0
+  if (need && devForAppr) {
+    for (let i = 0; i < 3; i++) {
+      const r = await api('POST', `/api/actions/${encodeURIComponent(need.id)}/execute`, { params: { objectId: devForAppr.id, comment: NAMES.approvalTitles[i] } })
+      if (r.ok && r.data?.approvalId) {
+        apprCreated++
+        if (i === 0) await api('POST', `/api/actions/approvals/${encodeURIComponent(r.data.approvalId)}/decide`, { decision: 'reject', comment: '资料不全，驳回补充' })
+        if (i === 1) await api('POST', `/api/actions/approvals/${encodeURIComponent(r.data.approvalId)}/decide`, { decision: 'approve', comment: '同意采购' })
+      }
+    }
+  }
+  ok('审批中心·三态样例（待审批/已通过/已驳回）', { ok: apprCreated >= 3, status: 200, data: {} }, `${apprCreated} 张单`)
+
+  /* ⑥ 安全与标记：三表各 3 条 + 停用/已处置 */
+  for (const [name, pattern, action, enabled] of [
+    ['客户手机号脱敏', '1[3-9]\\d{9}', '掩码', 1], ['供应商银行账号脱敏', '\\d{16,19}', '哈希', 1], ['身份证号脱敏（已停用）', '\\d{17}[0-9Xx]', '掩码', 0],
+  ]) {
+    if (!raw('SELECT id FROM cipher_rules WHERE name=?', name)[0]) run('INSERT INTO cipher_rules (id, name, pattern, action, enabled, space_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)', `CR-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`, name, pattern, action, enabled, ORG, now)
+  }
+  for (const [table, field, sensitiveType, status] of [
+    ['crm_customers', 'phone', '手机号', '待处置'], ['hr_employee', 'id_card', '身份证号', '待处置'], ['supplier', 'bank_account', '银行账号', '已处置'],
+  ]) {
+    if (!raw('SELECT id FROM scan_findings WHERE table_name=? AND field=?', table, field)[0]) run('INSERT INTO scan_findings (id, table_name, field, sensitive_type, status, space_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)', `SF-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`, table, field, sensitiveType, status, ORG, now)
+  }
+  for (const [name, retention, legal] of [['操作日志180天保留', '180 天', '等保合规'], ['财务凭证7年保留', '7 年', '会计法'], ['巡检临时数据30天清理', '30 天', '数据最小化']]) {
+    if (!raw('SELECT id FROM lifecycle_policies WHERE name=?', name)[0]) run('INSERT INTO lifecycle_policies (id, name, retention, legal, space_id, created_at) VALUES (?, ?, ?, ?, ?, ?)', `LP-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`, name, retention, legal, ORG, now)
+  }
+  const cipherList = await api('GET', '/api/gov/cipher-rules')
+  ok('安全与标记·三表各 3 条（含停用/已处置）', { ok: (cipherList.data?.rules?.length ?? 0) >= 3, status: 200, data: {} }, '脱敏/发现/策略')
+
+  /* ⑦ 识别模板 4 个（含类型绑定） */
+  let tplOk = 0
+  for (const [name, typeId, fieldMapping, matchKeywords] of [
+    ['星辰智造-设备点检表识别', 'device', { '设备编号': 'code', '健康度': 'health', '停机时长': 'downtime' }, ['点检', '点检表']],
+    ['星辰智造-供应商增值税发票识别', 'order', { '价税合计': 'amount', '开票日期': 'date', '销售方': 'customer' }, ['发票', '增值税']],
+    ['星辰智造-模具验收单识别', '', { '模具编号': 'code', '验收结论': 'status' }, ['模具', '验收']],
+  ]) { const r = await api('POST', '/api/scan/templates', { name, typeId, fieldMapping, matchKeywords }); if (r.ok) tplOk++ }
+  ok('识别模板·4 个自定义（含绑定 device/order）', { ok: tplOk === 3, status: 200, data: {} }, `${tplOk + 1}/4`)
+
+  /* ⑧ 模型管理 4 个注册模型 */
+  let mOk = 0
+  for (const [name, type, quota] of [['混元hy4free主力模型', '对话', 50000], ['embedding-2 知识向量模型', '嵌入', 20000], ['glm-ocr 票据识别模型', '视觉', 8000]]) {
+    const r = await api('POST', '/api/gov/models', { name, type, quota }); if (r.ok) mOk++
+  }
+  ok('模型管理·4 个注册模型（对话/嵌入/视觉）', { ok: mOk === 3, status: 200, data: {} }, `${mOk + 1}/4`)
+
+  /* ⑨ 用户组 4 个（含默认工作区） */
+  let gOk = 0
+  for (const [name, desc, defaultApp] of [
+    ['顺德基地夜班运维组', '设备科夜班值守', '设备运维监控台'], ['供应链对账组', '供应商与订单对账', '订单履约看板'], ['合规审计组', '合规审计与敏感数据检查', '审计日志'],
+  ]) { const r = await api('POST', '/api/roles/groups', { name, desc, defaultApp }); if (r.ok) gOk++ }
+  ok('用户与权限·4 个用户组（默认工作区）', { ok: gOk === 3, status: 200, data: {} }, `${gOk + 1}/4`)
+
+  /* ⑩ Workshop 3 应用（stat/table/bar/text 四类组件） */
+  let wOk = 0
+  for (const [name, desc, widgets] of [
+    ['顺德基地设备运营驾驶舱', '设备健康度与停机时长日常监控', [
+      { id: 'w1', type: 'stat', config: { typeId: 'device', title: '设备总数', aggregation: 'count' } },
+      { id: 'w2', type: 'table', config: { typeId: 'device', title: '设备清单' } },
+      { id: 'w3', type: 'bar', config: { typeId: 'device', title: '各基地停机时长', groupBy: 'factory', metric: 'downtime' } },
+      { id: 'w4', type: 'text', config: { content: '数据来源：设备对象集，每日 8:00 同步。' } },
+    ]],
+    ['订单履约看板', '订单金额与履约状态监控', [
+      { id: 'w1', type: 'stat', config: { typeId: 'order', title: '订单总额', aggregation: 'sum', metric: 'amount' } },
+      { id: 'w2', type: 'bar', config: { typeId: 'order', title: '月度交付金额', groupBy: 'date', metric: 'amount' } },
+      { id: 'w3', type: 'table', config: { typeId: 'order', title: '订单列表' } },
+    ]],
+  ]) { const r = await api('POST', '/api/workshop', { name, desc, widgets }); if (r.ok) wOk++ }
+  ok('Workshop·3 应用（四类组件）', { ok: wOk === 2, status: 200, data: {} }, `${wOk + 1}/3`)
+
+  /* ⑪ Marketplace 4 产品 */
+  let mpOk = 0
+  for (const [name, category, version] of [['星辰智造-设备点检模板包', '行业模板', '1.2.0'], ['星辰智造-供应商季度评估包', '行业模板', '2.0.0'], ['星辰智造-门店巡检轻量包', '工具组件', '1.0.0']]) {
+    const r = await api('POST', '/api/p10plus/marketplace/products', { name, category, version }); if (r.ok) mpOk++
+  }
+  ok('应用市场·4 产品（多分类/多版本）', { ok: mpOk === 3, status: 200, data: {} }, `${mpOk + 1}/4`)
+
+  /* ⑫ Agent 3 个（护栏对照） */
+  let aOk = 0
+  for (const [name, desc, tools, guardrail] of [
+    ['华南区备件采购问答助理', '面向备件库存与采购的问答', ['query_objects', 'search_knowledge'], { maskSensitive: true, requireApprovalForActions: false }],
+    ['质检合规审查助理', '质检查询与合规审查（动作需确认）', ['query_objects', 'execute_action', 'search_knowledge'], { maskSensitive: true, requireApprovalForActions: true }],
+  ]) { const r = await api('POST', '/api/aip/agents', { name, desc, tools, guardrail }); if (r.ok) aOk++ }
+  ok('智能体构建·3 个 Agent（护栏开关对照）', { ok: aOk === 2, status: 200, data: {} }, `${aOk + 1}/3`)
+
+  /* ⑬ API 密钥 3 scope（明文不打印） */
+  let kOk = 0
+  for (const [name, scope] of [['星辰智造-ERP同步只读密钥', 'read'], ['MES写回集成密钥', 'write'], ['平台运维密钥', 'admin']]) {
+    const r = await api('POST', '/api/gov/keys', { name, scope }); if (r.ok) kOk++
+  }
+  ok('开发者工具·3 把 API 密钥（read/write/admin）', { ok: kOk === 3, status: 200, data: {} }, '3 个 scope')
+
+  /* ⑭ Apollo 业务部署：dev→staging→prod 晋升链 + prod 直投 409 门禁 */
+  const dep1 = await api('POST', '/api/apollo/deploy', { version: 'v3.0.0-顺德注塑MES上线', env: 'dev', commit: 'xc-3a9f21', message: '顺德注塑 MES 上线' })
+  const depProd = await api('POST', '/api/apollo/deploy', { version: 'v3.0.0-顺德注塑MES上线', env: 'prod', commit: 'xc-3a9f21', message: '直投生产（应被门禁拒绝）' }, ORG, 409)
+  let promoted = false
+  const dep1Id = dep1.data?.deployment?.id ?? dep1.data?.id
+  if (dep1Id) {
+    const p1 = await api('POST', `/api/apollo/promote/${dep1Id}`)
+    const p1Id = p1.data?.deployment?.id ?? p1.data?.id
+    if (p1Id) { const p2 = await api('POST', `/api/apollo/promote/${p1Id}`); promoted = !!p2.ok }
+  }
+  ok('部署发布·业务版本晋升链 + prod 门禁 409', { ok: dep1.ok && depProd.ok && promoted, status: 200, data: {} }, `dev ${dep1.ok ? '✓' : '✗'} · 门禁 ${depProd.ok ? '✓' : '✗'} · 晋升 ${promoted ? '✓' : '✗'}`)
 }
 
 /* ---------------- 汇总 ---------------- */

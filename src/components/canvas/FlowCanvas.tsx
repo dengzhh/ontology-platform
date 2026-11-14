@@ -275,7 +275,8 @@ export default function FlowCanvas({
                     <div className="truncate text-[13px] font-semibold text-slate-800">{n.title}</div>
                     {n.subtitle && <div className="truncate text-[11px] text-slate-400">{n.subtitle}</div>}
                   </div>
-                  {n.badge && <span className="absolute -top-2 right-2 rounded bg-slate-700 px-1.5 py-px text-[10px] font-medium text-white">{n.badge}</span>}
+                  {/* 类型徽章放在卡片内部右上角，不用 -top（会被 foreignObject 上边界裁掉）；与状态圆点错开 */}
+                  {n.badge && <span className="ml-auto max-w-[76px] shrink-0 truncate rounded bg-slate-700 px-1.5 py-0.5 text-[10px] font-medium leading-4 text-white" title={n.badge}>{n.badge}</span>}
                   {n.status && <span className={cn('absolute right-2 top-2 h-2 w-2 rounded-full', STATUS_COLOR[n.status])} />}
                 </div>
               </foreignObject>

@@ -27,7 +27,7 @@
 
 **文档内截图**：`docs/screenshots/` 下 27 张 1440×900 真实界面截图（登录、仪表盘、建模、图谱、检索、ChatBI 四形态、工作流预设、审批、控制面板等），全部来自运行中的系统。
 
-**配套资产**：`demo-data/FEATURE-MATRIX.md`（42 页验证矩阵）、`tests/api-contract.md`（端点契约）、`tests/smoke.mjs`（187 项黑盒断言）、`demo-data/load.mjs`（96 项幂等数据集）、`CONVENTIONS.md`（开发规范）。
+**配套资产**：`demo-data/FEATURE-MATRIX.md`（42 页验证矩阵）、`tests/api-contract.md`（端点契约）、`tests/smoke.mjs`（187 项黑盒断言）、`demo-data/load.mjs`（118 项幂等数据集）、`CONVENTIONS.md`（开发规范）。
 
 ---
 
@@ -151,10 +151,10 @@
 
 #### ⑦ 数据血缘 `/data/lineage`
 
-- **功能**：四层血缘图谱（数据源→链接处理→下游应用→知识消费）、应用↔类型真实依赖连线、选中节点影响分析、滚轮缩放/平移拓扑。
-- **原理**：后端 `p10plus.ts:279-309` 提供四层节点（`object_types` / `link_types` / `workshop_apps` / `documents`）与 `appDependencies`（从 `widgets[].config.typeId` 抽取）；**拓扑计算在前端** `Lineage.tsx:79-137`：四列固定 X(150/460/800/1080)、`MIN_GAP=76` 按最大层节点数动态扩展画布高度、`spread()` 居中铺开解决重叠；`GraphCanvas` / `ZoomableCanvas` 负责缩放平移（以光标为中心 ×1.12，clamp 0.3~4）。影响分析按依赖类型对象数求和。
-- **边界**：「输出应用→知识文档」连边按 `i % outputs.length` 循环生成，是**示意层间连线**；无字段级/列级血缘、无跨空间血缘；四层是概念分层。
-- **验证**：`FEATURE-MATRIX.md` 数据 5；截图 `lineage.png`。
+- **功能**：四层血缘图谱（数据源→链接处理→下游应用→知识消费）、应用↔类型真实依赖连线、选中节点影响分析、滚轮缩放/平移拓扑；**规模控制**（默认每层只画规模最大的 8 个代表性节点，其余聚合为可点击的「+N」节点；「完整视图」每层上限 40，超出部分保留在右侧列表检索）。
+- **原理**：后端 `p10plus.ts` 提供四层节点（`object_types` / `link_types` / `workshop_apps` / `documents`）与 `appDependencies`；**拓扑计算在前端** `Lineage.tsx`：四列固定 X，`MIN_GAP=76` 居中铺开，画布高度按**实际绘制行数**计算（不再被上百个文档分块拉爆）；`GraphCanvas` / `ZoomableCanvas` 负责缩放平移。右侧「选择节点」列表保留全量数据可检索，影响分析按依赖类型对象数求和。
+- **边界**：「输出应用→知识文档」连边按索引循环生成，是**示意层间连线**；无字段级/列级血缘、无跨空间血缘；图谱默认不画全量节点（事无巨细的展示交由右侧列表与影响分析），完整视图亦有硬上限防大空间卡顿。
+- **验证**：浏览器实测 5/5（默认 29 节点 / 90 折叠 / 点「+N」展开 / 完整视图切换 / 大规模数据页面正常）；截图 `lineage.png`。
 
 #### ⑧ 本体管理器 `/ontology/manager`
 
@@ -202,7 +202,7 @@
 - **功能**：双 Tab——① **流程编辑器**：可视化编排业务流程（开始 / 执行动作 / 人工审批 / 发送通知 / 结束五类节点），点选节点编辑名称/动作绑定/后继、添加删除节点、拖拽布局、连接模式建线、点连线删除、undo/redo（Ctrl+Z / Ctrl+Shift+Z）、滚轮缩放平移、保存/删除流程；执行动作节点可绑定本体已登记的真实动作类型（显示审批标识）。② **动作链观测**：每个 `actionType` 的执行次数/待审批数/近期执行日志与观测画布（滚轮缩放）。
 - **原理**：自定义流程存 `settings.key='machinery_flows_${spaceId}'`（`GET/POST /p10plus/machinery/flows`、`DELETE /:id`），保存校验节点 id 唯一/类型合法/`next` 目标存在/绑定动作存在；观测侧 `p10plus.ts` 从 `actionTypes` + `actionLogs` 真实聚合 `execCount` / `pendingCount`。
 - **边界**：流程定义可编辑持久化，但**不驱动动作引擎执行**（与「工作流编排」不同：那里是真实执行链）；连线为单 `next` + 顺序回退（无并行分支）；观测画布只读。
-- **验证**：smoke 187/187（流程 CRUD/回读/断链 400/空节点 400）；load 96/96；浏览器实测 9/9（点选/添加/undo/建线/保存/刷新回读/观测 Tab）；截图 `machinery-editor.png`。
+- **验证**：smoke 187/187（流程 CRUD/回读/断链 400/空节点 400）；load 118/118；浏览器实测 9/9（点选/添加/undo/建线/保存/刷新回读/观测 Tab）；截图 `machinery-editor.png`。
 
 #### ⑭ 调度优化 `/ontology/scheduling`
 
@@ -334,9 +334,9 @@
 #### ㉛ 工作流编排 `/aip/logic`
 
 - **功能**：可视化节点编排（点选编辑/拖拽布局/上移下移/复制/删除确认）、**画布滚轮缩放 / 空白拖拽平移 / 复位 / 百分比**、**undo/redo（按钮 + Ctrl+Z / Ctrl+Shift+Z）**、**连线控制**（连接模式点两节点建 `next`、点已有连线删除确认、条件节点「是/否」目标可编辑）、6 个开箱即用预设（4 个离线可跑）、保存/删除/**预览运行 → 确认 → 真实执行**、逐步执行记录与动作结果、另存副本。
-- **原理**：`server/routes/logic.ts` + `shared/workflowTemplates.ts`：`transform` 离线节点（extract 提数值 / keyword 命中标记 / format）、条件节点按 `nextYes/nextNo` 真实跳转、**一般节点按显式 `next` 连线跳转**（无则回退数组顺序）、`byId` Map + `visited` 防环 + 20 步上限；`llm` 节点网关失败降级规则摘要并标 `branch:'degraded'`。**真实业务动作**：output 节点 `action ∈ create_object|send_notification|create_approval|none`，`POST /workflows/:id/run` 的 `mode=preview`（默认）只算结果并返回 `actions[]` 预览**不写业务数据**，`mode=apply` 才真实写 `objects`（工单对象）/ `notifications` / `approvals` 并返回 `refId`，审计区分「预览工作流 / 应用工作流动作」。工作流存 `settings.key='logic_workflows_${spaceId}'`；预设不落库动态合并；保存预设自动另存「副本」。`FlowCanvas` 支持点选/拖拽（坐标反算）与可选 `zoomable`（单 `<g transform>` 承载缩放平移）；不传 `zoomable` 的管道构建/流程编排页保持静态（向后兼容）。
+- **原理**：`server/routes/logic.ts` + `shared/workflowTemplates.ts`：`transform` 离线节点（extract 提数值 / keyword 命中标记 / format）、条件节点按 `nextYes/nextNo` 真实跳转、**一般节点按显式 `next` 连线跳转**（无则回退数组顺序）、`byId` Map + `visited` 防环 + 20 步上限；`llm` 节点网关失败降级规则摘要并标 `branch:'degraded'`。**真实业务动作**：output 节点 `action ∈ create_object|send_notification|create_approval|none`，`POST /workflows/:id/run` 的 `mode=preview`（默认）只算结果并返回 `actions[]` 预览**不写业务数据**，`mode=apply` 才真实写 `objects`（工单对象）/ `notifications` / `approvals` 并返回 `refId`，审计区分「预览工作流 / 应用工作流动作」。工作流存 `settings.key='logic_workflows_${spaceId}'`；预设不落库动态合并；保存预设自动另存「副本」。`FlowCanvas` 支持点选/拖拽（坐标反算）与可选 `zoomable`（单 `<g transform>` 承载缩放平移）；节点类型徽章已改为卡片内右上角渲染（不再用 `-top` 越出 `foreignObject` 边界被裁切），工作流编排 / 管道构建 / 流程编排三页画布交互能力一致。
 - **边界**：`WorkflowStep.model` 字段服务端未使用（统一走全局 AI 配置）；连线只能一条 `next` + 条件两分支（无并行/汇聚/多条件复合）；无并发/定时触发/版本管理；2 个 AI 增强预设依赖网关；缩放范围 30%~400%；`create_object` 默认写 `ticket` 类型，非通用任意类型校验；undo 以「离散操作 + 字段失焦 + 拖拽结束」为粒度，最多 50 步。详见 [§4.2](#42-函数沙箱与工作流)。
-- **验证**：smoke 187/187（dry-run 零副作用 / apply 真实落库并返回 refId / 通知与审批两类动作 / `next` 跳转 / 断链 400）；load.mjs 96/96；浏览器实测 undo/redo、连接模式建线、连线删除取消、预览确认取消与应用结果展示、缩放/平移/复位；截图 `aip-logic-presets.png`、`aip-logic-zoom.png`、`aip-logic-actions.png`。
+- **验证**：smoke 187/187（dry-run 零副作用 / apply 真实落库并返回 refId / 通知与审批两类动作 / `next` 跳转 / 断链 400）；load.mjs 118/118；浏览器实测 undo/redo、连接模式建线、连线删除取消、预览确认取消与应用结果展示、缩放/平移/复位；截图 `aip-logic-presets.png`、`aip-logic-zoom.png`、`aip-logic-actions.png`。
 
 ![工作流预设](screenshots/aip-logic-presets.png)
 
@@ -530,7 +530,7 @@
 | 资产 | 规模 | 说明 |
 |---|---|---|
 | `tests/smoke.mjs` | **177 断言 / 0 失败** | 零依赖黑盒：登录 → 60+ 读端点 → 写闭环 → 权限 → 外部源 → ChatBI → 沙箱 → 分页/批量 → 预设/追问 |
-| `demo-data/load.mjs` | **96 项幂等** | 24 个月订单时序（季节波动 + 年增 18%）、2 个工作流、6 预设、外部库、24 扫描素材 |
+| `demo-data/load.mjs` | **118 项幂等** | 24 个月订单时序（季节波动 + 年增 18%）、2 个工作流、6 预设、外部库、24 扫描素材 |
 | `demo-data/stress.mjs` | 10 万行基准 | 灌入/列表/count/关键词延迟，自动清理 |
 | `demo-data/FEATURE-MATRIX.md` | 42 页矩阵 | 功能 ↔ 验证数据 ↔ 体验步骤 |
 | `tests/checklist.md` / `e2e-scenarios.md` | 40 页清单 / 10 剧本 | 人工验收 |
@@ -580,7 +580,7 @@ npm run db:migrate       # 幂等建表 + 索引 + 空间回填
 npm run seed             # 演示数据
 npm run dev              # 前端 5174 + API 5000
 python demo-data/build_external_db.py
-node demo-data/load.mjs  # 92 项验证数据集
+node demo-data/load.mjs  # 118 项验证数据集
 node tests/smoke.mjs     # 187 项黑盒断言
 ```
 

@@ -90,11 +90,11 @@ npm run dev              # 一条命令启动全栈：前端 http://localhost:51
 
 **默认账号**：`chen.xingye / ontos@2026`（平台管理员；另有维修工程师/计划员/审计员演示账号，登录页可一键填入）
 
-**可选：一键装载全功能验证数据**（幂等，92 项断言）
+**可选：一键装载全功能验证数据**（幂等，118 项断言）
 
 ```bash
 python demo-data/build_external_db.py   # 生成独立外部 SQLite 演示库（4 表 / 120 行）
-node demo-data/load.mjs                 # 期望：通过 92/92
+node demo-data/load.mjs                 # 期望：通过 118/118
 ```
 
 装载后按 `demo-data/FEATURE-MATRIX.md` 的 42 页验证矩阵逐页体验。清理验证数据：`node demo-data/load.mjs --clean`。
@@ -191,7 +191,7 @@ tests/ · demo-data/            # 冒烟/契约/清单/E2E 剧本/扫描素材 �
 | 资产 | 规模 | 说明 |
 |---|---|---|
 | `tests/smoke.mjs` | **187 项断言全绿** | 零依赖黑盒：登录 → 60+ 读端点 → 写闭环 → 权限 → 外部源 → ChatBI → 函数沙箱 → 分页/批量 |
-| `demo-data/load.mjs` | **92 项幂等装载** | 一键生成验证全部功能的数据集（含外部库构建） |
+| `demo-data/load.mjs` | **118 项幂等装载** | 一键生成验证全部功能的数据集（含外部库构建） |
 | `demo-data/stress.mjs` | **10 万行基准** | 事务灌入 726ms、索引列表 0.3ms、count 5.4ms，自动清理 |
 | `demo-data/FEATURE-MATRIX.md` | 42 页矩阵 | 每页功能 ↔ 验证数据 ↔ 体验步骤 |
 | `tests/checklist.md` / `e2e-scenarios.md` | 40 页清单 / 10 剧本 | 人工验收与业务闭环走查 |
