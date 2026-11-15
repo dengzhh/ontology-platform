@@ -342,7 +342,7 @@ export const scanSessions = sqliteTable('scan_sessions', {
   spaceId: text('space_id').notNull(),
   typeId: text('type_id').notNull().default(''),
   ownerId: text('owner_id').notNull(),
-  status: text('status').notNull().default('waiting'), // waiting | uploaded | done | expired
+  status: text('status').notNull().default('waiting'), // waiting | uploaded | done | committed | expired
   image: text('image').notNull().default(''),
   values: text('values', { mode: 'json' }).$type<Record<string, unknown>>(),
   error: text('error').notNull().default(''),

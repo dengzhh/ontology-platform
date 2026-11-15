@@ -269,6 +269,8 @@
 ### /api/scan-session  (scanSessionRoutes)
   GET /:id
   POST /:id/upload
+  POST /:id/reset
+  POST /:id/commit
   POST /create
   GET /:id/poll
 

@@ -14,6 +14,7 @@ interface SessionState {
   id: string
   status: string
   typeName: string
+  spaceName?: string
   values: Record<string, unknown> | null
   error: string
   expiresAt: number
@@ -75,7 +76,11 @@ export default function MobileScanDialog({
         try {
           const s = await api<SessionState>(`/scan-session/${r.id}/poll`)
           setState(s)
-          if (s.status === 'done' && s.values) {
+          // 手机端已自行确认入库：直接显示成功，不再等 PC 操作
+          if (s.status === 'committed') {
+            if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null }
+            setDone(true)
+          } else if (s.status === 'done' && s.values) {
             const v: Record<string, string> = {}
             for (const [k, val] of Object.entries(s.values)) v[k] = String(val)
             setValues(v)
@@ -94,7 +99,8 @@ export default function MobileScanDialog({
     setCommitting(true)
     setError('')
     try {
-      await api('/scan/commit', { method: 'POST', body: { typeId, values } })
+      // 走会话端点：done → committed 单向流转，与手机端「确认入库」互斥，天然防双写
+      await api(`/scan-session/${sessionId}/commit`, { method: 'POST', body: { values } })
       setDone(true)
       onCommitted?.()
     } catch (e) { setError(e instanceof Error ? e.message : '入库失败') }
@@ -130,7 +136,9 @@ export default function MobileScanDialog({
           <div className="py-8 text-center">
             <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-emerald-50 text-emerald-500"><Check size={28} /></div>
             <div className="text-base font-bold text-slate-900">已成功录入「{target?.name}」</div>
-            <div className="mt-1 text-sm text-slate-500">手机拍摄的票据数据已写入当前空间</div>
+            <div className="mt-1 text-sm text-slate-500">
+              数据已写入「{state?.spaceName || '当前'}」空间，可在对象浏览器中查看{state?.status === 'committed' ? '（手机端已确认入库）' : ''}
+            </div>
             <div className="mt-5 flex justify-center gap-2">
               <Btn onClick={restart}><RefreshCw size={13} /> 再扫一张</Btn>
               <Btn variant="primary" onClick={onClose}>完成</Btn>

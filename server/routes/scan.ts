@@ -69,11 +69,74 @@ export function parseJsonLoose(text: string): Record<string, unknown> | null {
   try { return JSON.parse(cleaned.slice(start, end + 1)) as Record<string, unknown> } catch { return null }
 }
 
-function audit(user: SessionUser, action: string, target: string) {
+function audit(actor: string, action: string, target: string) {
   db.insert(tables.auditEvents).values({
     id: `AE-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-    actor: user.name, action, target, ip: '本地', createdAt: Date.now(),
+    actor, action, target, ip: '本地', createdAt: Date.now(),
   }).run()
+}
+
+/** 目标类型的「包含明细」配套明细类型（按链接 id/name 判定），无则 null */
+export function findItemTypeId(spaceId: string, sourceTypeId: string): string | null {
+  const link = db.select().from(tables.linkTypes).all()
+    .find((l) => l.spaceId === spaceId && l.sourceTypeId === sourceTypeId && /item|detail|明细/i.test(l.id + l.name))
+  return link?.targetTypeId ?? null
+}
+
+/** 扫描结果落库（PC 确认与手机会话确认共用）：主对象 + items 明细子对象 + 链接 + 审计 */
+export function commitScanObject(opts: {
+  spaceId: string
+  typeId: string
+  values: Record<string, unknown>
+  itemTypeId?: string | null
+  actorName: string
+}): { id: string; itemCount: number } | { error: string } {
+  const { spaceId, typeId, values, actorName } = opts
+  const t = db.select().from(tables.objectTypes).all().find((x) => x.id === typeId && x.spaceId === spaceId)
+  if (!t) return { error: '目标类型不存在' }
+
+  // 拆出 items：仅当该空间存在配套明细类型 + 链接时才落地（主对象不存这个特殊键）
+  const rawItems = values.items
+  const items = Array.isArray(rawItems) ? (rawItems.filter((x) => x && typeof x === 'object') as Record<string, unknown>[]) : []
+  const mainValues = { ...values }
+  delete mainValues.items
+
+  const id = `${t.id}:${Date.now().toString(36)}${Math.floor(Math.random() * 100).toString(36)}`
+  const now = Date.now()
+  db.insert(tables.objects).values({
+    id, typeId: t.id, values: mainValues, createdBy: actorName,
+    createdAt: now, updatedAt: now, spaceId,
+  }).run()
+
+  let itemCount = 0
+  const allTypes = db.select().from(tables.objectTypes).all()
+  const itemType = opts.itemTypeId ? allTypes.find((x) => x.id === opts.itemTypeId && x.spaceId === spaceId) : null
+  const link = itemType ? db.select().from(tables.linkTypes).all()
+    .find((l) => l.spaceId === spaceId && l.sourceTypeId === t.id && l.targetTypeId === itemType.id) : null
+  if (itemType && link) {
+    const itemProps = (itemType.properties ?? []) as { key: string; type: string }[]
+    for (let i = 0; i < items.length; i++) {
+      const vals: Record<string, unknown> = {}
+      for (const p of itemProps) {
+        const v = items[i][p.key]
+        if (v === undefined || v === null || v === '') continue
+        vals[p.key] = p.type === 'number' ? (Number(v) || 0) : v
+      }
+      if (!Object.keys(vals).length) continue
+      const itemId = `${itemType.id}:${now.toString(36)}${i.toString(36)}`
+      db.insert(tables.objects).values({
+        id: itemId, typeId: itemType.id, values: vals, createdBy: actorName,
+        createdAt: now, updatedAt: now, spaceId,
+      }).run()
+      db.insert(tables.objectLinks).values({
+        id: `OL-${now.toString(36)}-${i.toString(36)}`, linkTypeId: link.id,
+        sourceId: id, targetId: itemId, createdBy: actorName, createdAt: now, spaceId,
+      }).run()
+      itemCount++
+    }
+  }
+  audit(actorName, '扫描录入对象', `${t.name}${itemCount ? ` + ${itemCount} 条明细` : ''} ${JSON.stringify(mainValues).slice(0, 60)}`)
+  return { id, itemCount }
 }
 
 export const scanRoutes = new Hono<Ctx>()
@@ -143,7 +206,7 @@ scanRoutes.post('/templates', async (c) => {
   } else {
     db.insert(tables.scanTemplates).values(values).run()
   }
-  audit(user, body.id ? '更新识别模板' : '新建识别模板', body.name)
+  audit(user.name, body.id ? '更新识别模板' : '新建识别模板', body.name)
   return c.json({ id })
 })
 
@@ -156,7 +219,7 @@ scanRoutes.delete('/templates/:id', async (c) => {
   if (!t) return c.json({ error: '模板不存在' }, 404)
   if (t.kind === 'builtin') return c.json({ error: '内置模板不可删除' }, 403)
   db.delete(tables.scanTemplates).where(eq(tables.scanTemplates.id, id)).run()
-  audit(user, '删除识别模板', t.name)
+  audit(user.name, '删除识别模板', t.name)
   return c.json({ ok: true })
 })
 
@@ -219,9 +282,7 @@ scanRoutes.post('/recognize', async (c) => {
   }
   const props = (target?.properties ?? []) as { key: string; name: string; type: string; enumValues?: string[] }[]
   // 若目标类型有「包含明细」链接，保留模型输出的 items 数组，供 /commit 落地为明细子对象
-  const itemLink = target ? db.select().from(tables.linkTypes).all()
-    .find((l) => l.spaceId === space.id && l.sourceTypeId === target.id && /item|detail|明细/i.test(l.id + l.name)) : null
-  const itemTypeId = itemLink?.targetTypeId ?? null
+  const itemTypeId = target ? findItemTypeId(space.id, target.id) : null
   if (template?.fieldMapping && Object.keys(template.fieldMapping).length > 0) {
     cleaned = applyMapping(cleaned, template.fieldMapping, props)
   }
@@ -238,7 +299,7 @@ scanRoutes.post('/recognize', async (c) => {
     }
   }
 
-  audit(user, '视觉识别票据', `${target?.name ?? '通用'}@${space.name} · 模板:${template?.name ?? '无'}`)
+  audit(user.name, '视觉识别票据', `${target?.name ?? '通用'}@${space.name} · 模板:${template?.name ?? '无'}`)
   return c.json({
     values: cleaned,
     itemTypeId,
@@ -274,10 +335,9 @@ scanRoutes.post('/recognize-text', async (c) => {
 
   const props = (target?.properties ?? []) as { key: string; name: string; type: string; enumValues?: string[] }[]
   // 与 /recognize 对齐：目标类型带「包含明细」链接时，文本提取同样输出 items 数组
-  const itemLink = target ? db.select().from(tables.linkTypes).all()
-    .find((l) => l.spaceId === space.id && l.sourceTypeId === target.id && /item|detail|明细/i.test(l.id + l.name)) : null
-  const itemType = itemLink ? db.select().from(tables.objectTypes).all()
-    .find((x) => x.id === itemLink.targetTypeId && x.spaceId === space.id) : null
+  const itemType = target
+    ? db.select().from(tables.objectTypes).all().find((x) => x.id === findItemTypeId(space.id, target.id) && x.spaceId === space.id)
+    : null
   const itemTypeId = itemType?.id ?? null
   let fields = props.map((p) => {
     const desc = p.type === 'enum' && p.enumValues?.length ? `枚举只能是: ${p.enumValues.join('/')}` : p.type === 'number' ? '数字' : p.type === 'date' ? '日期 YYYY-MM-DD' : '文本'
@@ -358,7 +418,7 @@ scanRoutes.post('/recognize-text', async (c) => {
       }
     }
   }
-  audit(user, '文件文本识别', `${body.fileName ?? ''} ${target?.name ?? '通用'} · 模板:${template?.name ?? '无'}`)
+  audit(user.name, '文件文本识别', `${body.fileName ?? ''} ${target?.name ?? '通用'} · 模板:${template?.name ?? '无'}`)
   return c.json({
     values: cleaned, raw: raw.slice(0, 200),
     typeId: target?.id ?? null, typeName: target?.name ?? '通用', itemTypeId,
@@ -392,58 +452,16 @@ scanRoutes.post('/recognize-batch', async (c) => {
       results.push({ index: i, ok: false, error: e instanceof Error ? e.message : '失败' })
     }
   }
-  audit(user, '批量视觉识别', `${body.images.length} 张@${space.name}`)
+  audit(user.name, '批量视觉识别', `${body.images.length} 张@${space.name}`)
   return c.json({ results })
 })
 
-/** 识别后确认入库（前端审核修正后调用）；若含 items 则落地为明细子对象 + 链接 */
+/** 识别后确认入库（PC 端审核修正后调用）；落库逻辑与手机会话确认共用 commitScanObject */
 scanRoutes.post('/commit', async (c) => {
   const user = c.get('user')
   const space = c.get('space')
   const body = await c.req.json<{ typeId: string; values: Record<string, unknown>; itemTypeId?: string | null }>()
-  const t = db.select().from(tables.objectTypes).all().find((x) => x.id === body.typeId && x.spaceId === space.id)
-  if (!t) return c.json({ error: '目标类型不存在' }, 404)
-
-  // 拆出 items：仅当该空间存在配套明细类型 + 链接时才落地（主对象不存这个特殊键）
-  const rawItems = body.values.items
-  const items = Array.isArray(rawItems) ? (rawItems.filter((x) => x && typeof x === 'object') as Record<string, unknown>[]) : []
-  const mainValues = { ...body.values }
-  delete mainValues.items
-
-  const id = `${t.id}:${Date.now().toString(36)}${Math.floor(Math.random() * 100).toString(36)}`
-  const now = Date.now()
-  db.insert(tables.objects).values({
-    id, typeId: t.id, values: mainValues, createdBy: user.name,
-    createdAt: now, updatedAt: now, spaceId: space.id,
-  }).run()
-
-  let itemCount = 0
-  const allTypes = db.select().from(tables.objectTypes).all()
-  const itemType = body.itemTypeId ? allTypes.find((x) => x.id === body.itemTypeId && x.spaceId === space.id) : null
-  const link = itemType ? db.select().from(tables.linkTypes).all()
-    .find((l) => l.spaceId === space.id && l.sourceTypeId === t.id && l.targetTypeId === itemType.id) : null
-  if (itemType && link) {
-    const itemProps = (itemType.properties ?? []) as { key: string; type: string }[]
-    for (let i = 0; i < items.length; i++) {
-      const vals: Record<string, unknown> = {}
-      for (const p of itemProps) {
-        const v = items[i][p.key]
-        if (v === undefined || v === null || v === '') continue
-        vals[p.key] = p.type === 'number' ? (Number(v) || 0) : v
-      }
-      if (!Object.keys(vals).length) continue
-      const itemId = `${itemType.id}:${now.toString(36)}${i.toString(36)}`
-      db.insert(tables.objects).values({
-        id: itemId, typeId: itemType.id, values: vals, createdBy: user.name,
-        createdAt: now, updatedAt: now, spaceId: space.id,
-      }).run()
-      db.insert(tables.objectLinks).values({
-        id: `OL-${now.toString(36)}-${i.toString(36)}`, linkTypeId: link.id,
-        sourceId: id, targetId: itemId, createdBy: user.name, createdAt: now, spaceId: space.id,
-      }).run()
-      itemCount++
-    }
-  }
-  audit(user, '扫描录入对象', `${t.name}${itemCount ? ` + ${itemCount} 条明细` : ''} ${JSON.stringify(mainValues).slice(0, 60)}`)
-  return c.json({ id, ok: true, itemCount })
+  const r = commitScanObject({ spaceId: space.id, typeId: body.typeId, values: body.values, itemTypeId: body.itemTypeId, actorName: user.name })
+  if ('error' in r) return c.json({ error: r.error }, 404)
+  return c.json({ id: r.id, ok: true, itemCount: r.itemCount })
 })

@@ -1,13 +1,13 @@
 import { Hono } from 'hono'
 import { eq } from 'drizzle-orm'
 import { db, tables } from '../db'
-import { callVision, getVisionConfig, parseJsonLoose } from './scan'
+import { callVision, getVisionConfig, parseJsonLoose, commitScanObject, findItemTypeId } from './scan'
 import { autoMatchTemplate, buildPrompt, applyMapping } from '../engine/scanTemplates'
 
 /**
  * 手机扫码协同会话 API
  * - PC（需登录）创建会话、轮询结果
- * - 手机（公开，凭一次性 token）查看状态、上传图片 → 后端自动识别 → PC 轮询获取结果
+ * - 手机（公开，凭一次性 token）查看状态、上传图片 → 后端自动识别 → 手机/PC 任一端确认入库（status: done → committed）
  */
 
 const SESSION_TTL = 10 * 60 * 1000 // 10 分钟
@@ -32,6 +32,7 @@ function publicView(r: SessionRow) {
     typeId: r.typeId,
     status: r.status,
     typeName: r.typeId ? (db.select().from(tables.objectTypes).all().find((t) => t.id === r.typeId)?.name ?? '') : '',
+    spaceName: db.select().from(tables.spaces).all().find((s) => s.id === r.spaceId)?.name ?? '',
     values: r.values,
     error: r.error,
     createdAt: new Date(r.createdAt).toLocaleString('zh-CN', { hour12: false }),
@@ -127,6 +128,32 @@ scanSessionRoutes.post('/:id/reset', async (c) => {
   if (Date.now() > r.expiresAt) return c.json({ error: '二维码已过期，请在电脑上重新生成' }, 410)
   db.update(tables.scanSessions).set({ status: 'waiting', image: '', values: null, error: '' }).where(eq(tables.scanSessions.id, id)).run()
   return c.json({ ok: true })
+})
+
+/** 手机/PC 端：确认入库（免登录，凭会话 token；done → committed 单向，天然防双端重复入库）
+ *  手机端不传 values 用会话内识别结果；PC 端传审核修正后的 values */
+scanSessionRoutes.post('/:id/commit', async (c) => {
+  const id = c.req.param('id')
+  const r = db.select().from(tables.scanSessions).where(eq(tables.scanSessions.id, id)).get() as unknown as SessionRow | undefined
+  if (!r) return c.json({ error: '会话不存在' }, 404)
+  if (Date.now() > r.expiresAt) return c.json({ error: '二维码已过期，请在电脑上重新生成' }, 410)
+  if (r.status === 'committed') return c.json({ error: '该会话已入库，请「继续拍下一张」' }, 409)
+  if (r.status !== 'done' || !r.values) return c.json({ error: '尚无识别结果可入库' }, 400)
+
+  const body = await c.req.json<{ values?: Record<string, unknown>; itemTypeId?: string | null }>().catch(() => ({}) as { values?: Record<string, unknown>; itemTypeId?: string | null })
+  const owner = db.select().from(tables.users).all().find((u) => u.id === r.ownerId)
+  const typeName = db.select().from(tables.objectTypes).all().find((t) => t.id === r.typeId)?.name ?? ''
+  const res = commitScanObject({
+    spaceId: r.spaceId,
+    typeId: r.typeId,
+    values: body.values && Object.keys(body.values).length > 0 ? body.values : r.values,
+    itemTypeId: body.itemTypeId ?? findItemTypeId(r.spaceId, r.typeId),
+    actorName: owner?.name ?? '手机扫码',
+  })
+  if ('error' in res) return c.json({ error: res.error }, 404)
+
+  db.update(tables.scanSessions).set({ status: 'committed', image: '' }).where(eq(tables.scanSessions.id, id)).run()
+  return c.json({ ok: true, id: res.id, itemCount: res.itemCount, typeName })
 })
 
 /** PC 端：创建会话（需登录，从 Authorization 读用户） */

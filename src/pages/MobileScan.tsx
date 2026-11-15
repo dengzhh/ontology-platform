@@ -8,6 +8,7 @@ interface SessionState {
   id: string
   status: string
   typeName: string
+  spaceName: string
   values: Record<string, unknown> | null
   error: string
 }
@@ -35,7 +36,7 @@ export default function MobileScan() {
   useEffect(() => {
     load()
     const timer = setInterval(() => {
-      if (state?.status === 'done') return
+      if (state?.status === 'done' || state?.status === 'committed') return
       load()
     }, 3000)
     return () => clearInterval(timer)
@@ -100,6 +101,23 @@ export default function MobileScan() {
     finally { setBusy(false); setPreview(''); if (fileRef.current) fileRef.current.value = '' }
   }
 
+  /** 手机端直接确认入库：识别结果落成对象（无需回电脑操作），会话标记 committed */
+  async function commit() {
+    setBusy(true)
+    setErr('')
+    try {
+      const res = await fetch(`${API}/${id}/commit`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      })
+      const j = await res.json()
+      if (!res.ok) { setErr(j.error ?? '入库失败'); return }
+      setState((s) => (s ? { ...s, status: 'committed' } : s))
+    } catch { setErr('入库失败，请检查网络') }
+    finally { setBusy(false) }
+  }
+
   /** 「继续拍下一张」：先重置服务端会话（否则轮询会把旧结果拉回来、且第二次上传会 409），再回到拍照态 */
   async function reset() {
     setPreview(''); setErr('')
@@ -138,8 +156,8 @@ export default function MobileScan() {
         <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-card">
           <div className="flex items-center justify-between">
             <div className="text-sm font-semibold text-slate-800">当前任务</div>
-            <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${state?.status === 'done' ? 'bg-emerald-50 text-emerald-700' : 'bg-brand-50 text-brand-700'}`}>
-              {state?.status === 'done' ? '已完成' : state?.status === 'uploaded' ? '识别中…' : '等待拍照'}
+            <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${state?.status === 'done' || state?.status === 'committed' ? 'bg-emerald-50 text-emerald-700' : 'bg-brand-50 text-brand-700'}`}>
+              {state?.status === 'committed' ? '已入库' : state?.status === 'done' ? '待确认' : state?.status === 'uploaded' ? '识别中…' : '等待拍照'}
             </span>
           </div>
           <div className="mt-2 space-y-1 text-[13px] text-slate-600">
@@ -155,12 +173,24 @@ export default function MobileScan() {
           </div>
         )}
 
-        {/* 完成态 */}
-        {state?.status === 'done' ? (
+        {/* 已入库态 */}
+        {state?.status === 'committed' ? (
+          <div className="rounded-2xl border border-emerald-200 bg-white p-5 text-center shadow-card">
+            <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-emerald-50 text-emerald-500"><Check size={28} /></div>
+            <div className="text-base font-bold text-slate-900">已录入「{state.typeName || '对象'}」</div>
+            <div className="mt-1 text-xs text-slate-500">
+              数据已写入「{state.spaceName || '当前'}」空间的「{state.typeName || '对象'}」类型
+            </div>
+            <div className="mt-1 text-xs text-slate-500">可在电脑端「对象浏览器」切换到该空间查看与编辑</div>
+            <button onClick={reset} className="mt-4 w-full rounded-xl bg-brand-600 py-3 text-sm font-semibold text-white">
+              <span className="inline-flex items-center gap-1.5"><RefreshCw size={14} /> 继续拍下一张</span>
+            </button>
+          </div>
+        ) : state?.status === 'done' ? (
           <div className="rounded-2xl border border-emerald-200 bg-white p-5 text-center shadow-card">
             <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-emerald-50 text-emerald-500"><Check size={28} /></div>
             <div className="text-base font-bold text-slate-900">识别完成！</div>
-            <div className="mt-1 text-xs text-slate-500">结果已同步到电脑端，请在电脑上核对并确认入库</div>
+            <div className="mt-1 text-xs text-slate-500">请核对以下识别结果，确认后直接入库</div>
             {state.values && (
               <div className="mt-4 space-y-1.5 rounded-xl bg-slate-50 p-3 text-left">
                 {Object.entries(state.values).map(([k, v]) => (
@@ -171,10 +201,13 @@ export default function MobileScan() {
                 ))}
               </div>
             )}
-            <button onClick={reset} className="mt-4 w-full rounded-xl bg-brand-600 py-3 text-sm font-semibold text-white">
-              <span className="inline-flex items-center gap-1.5"><RefreshCw size={14} /> 继续拍下一张</span>
+            <button onClick={commit} disabled={busy} className="mt-4 w-full rounded-xl bg-brand-600 py-3 text-sm font-semibold text-white disabled:opacity-50">
+              <span className="inline-flex items-center gap-1.5">{busy ? <><Loader2 size={14} className="animate-spin" /> 入库中…</> : <><Check size={14} /> 确认入库</>}</span>
             </button>
-            <p className="mt-2 text-[11px] text-slate-400">可继续拍照，新结果会覆盖并同步到电脑</p>
+            <button onClick={reset} className="mt-2 w-full rounded-xl border border-slate-200 py-2.5 text-[13px] font-medium text-slate-600">
+              <span className="inline-flex items-center gap-1.5"><RefreshCw size={13} /> 重拍（不入库）</span>
+            </button>
+            <p className="mt-2 text-[11px] text-slate-400">结果同步保存在会话中，也可回电脑端「对象浏览器 → 扫描录入」核对入库</p>
           </div>
         ) : (
           <>
