@@ -390,15 +390,17 @@ scanRoutes.post('/recognize-text', async (c) => {
     return `  "${p.key}": ${p.name}（${desc}，提取不到填空字符串""）`
   }).join(',\n')
   if (itemType) {
-    const itemKeys = ((itemType.properties ?? []) as { key: string }[]).map((p) => `"${p.key}"`).join(', ')
-    fields += `,\n  "items": [ { ${itemKeys} } ]`
+    const itemProps = ((itemType.properties ?? []) as { key: string; type: string }[])
+    // 与 buildPrompt 一致：显式两行示例，避免模型忽略 items 键
+    const demoRow = (i: number) => '    ' + JSON.stringify(Object.fromEntries(itemProps.map((p) => [p.key, p.type === 'number' ? i : ''])))
+    fields += `,\n  "items": [\n${demoRow(1)},\n${demoRow(2)}\n  ]`
   }
   const system = [
     '你是单据/文档结构化信息提取专家。从给定文本中提取字段，输出严格 JSON（不要代码块、不要其他文字）。',
     target ? `目标对象类型：${target.name}。` : '',
     `输出格式：\n{\n${fields || '  "title": "", "amount": 0, "date": "", "notes": ""'}\n}`,
     '规则：只输出 JSON；金额只输出数字；日期 YYYY-MM-DD；输出字段名必须与上面 key 一致；提取不到填空字符串。',
-    itemType ? `文本含商品/服务明细时输出 "items" 数组（字段：${((itemType.properties ?? []) as { key: string }[]).map((p) => p.key).join(', ')}），无明细输出 []。每件商品独立一个对象，严禁把多个商品的同一字段合并为数组或拼接字符串。` : '',
+    itemType ? `文本含逐条商品/服务明细时必须逐行抄录进 "items" 数组（字段：${((itemType.properties ?? []) as { key: string }[]).map((p) => p.key).join(', ')}），无明细输出 []。每件商品独立一个对象，严禁把多个商品的同一字段合并为数组或拼接字符串。` : '',
     template?.extraPrompt ? `\n【${template.name} · 提取要点】\n${template.extraPrompt}` : '',
     body.hint ? `\n【补充要求】${body.hint}` : '',
   ].filter(Boolean).join('\n')

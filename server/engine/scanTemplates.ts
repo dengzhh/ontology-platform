@@ -146,8 +146,9 @@ export function buildPrompt(typeId: string, spaceId: string, template?: Template
     .find((x) => x.id === itemLink.targetTypeId && x.spaceId === spaceId) : null
   if (itemType) {
     const itemProps = (itemType.properties ?? []) as PropertyDef[]
-    const itemFields = itemProps.map((p) => `"${p.key}"`).join(', ')
-    fields += `,\n  "items": [ { ${itemFields} } ]`
+    // 显式两行示例：glm-4v-flash 对内联 `[ { … } ]` 的 schema 会整个忽略 items 键，示例化后才能稳定输出
+    const demoRow = (i: number) => '    ' + JSON.stringify(Object.fromEntries(itemProps.map((p) => [p.key, p.type === 'number' ? i : ''])))
+    fields += `,\n  "items": [\n${demoRow(1)},\n${demoRow(2)}\n  ]`
   }
 
   const lines = [
@@ -160,7 +161,7 @@ export function buildPrompt(typeId: string, spaceId: string, template?: Template
     '3. 输出字段名必须与上面给出的 key 完全一致。',
   ]
   if (itemType) {
-    lines.push('', `【明细行】若票面有商品/服务明细，请同时输出 "items" 数组（每行字段：${((itemType.properties ?? []) as PropertyDef[]).map((p) => p.key).join(', ')}）；金额为该行小计，无明细时输出空数组 []。`)
+    lines.push('', `【明细行·必填】票面出现逐条商品/服务明细时，必须把每一行逐行抄录进 "items" 数组（字段：${((itemType.properties ?? []) as PropertyDef[]).map((p) => p.key).join(', ')}；金额为该行小计）。即使字很小也要逐行提取，禁止遗漏、禁止只给合计；票面确实没有任何明细行时才输出 []。`)
     lines.push('重要：每件商品必须是 items 里独立的一个对象（一商品一行）；严禁把多个商品的同一字段合并成数组（如 "name":["A","B"]）或拼接成一个字符串。')
   }
   if (template?.extraPrompt) {
@@ -175,6 +176,8 @@ export function applyMapping(values: Record<string, unknown>, mapping: Record<st
   const out: Record<string, unknown> = {}
   const validKeys = new Set(props.map((p) => p.key))
   for (const [k, v] of Object.entries(values)) {
+    // items 是明细行数组（配套明细类型落地用），不参与字段映射，直接放行
+    if (k === 'items') { out.items = v; continue }
     const mapped = mapping[k] ?? k
     if (validKeys.size === 0 || validKeys.has(mapped)) out[mapped] = v
   }
