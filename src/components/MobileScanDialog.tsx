@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import QRCode from 'qrcode'
-import { QrCode, X, Loader2, Check, RefreshCw, Smartphone, Copy } from 'lucide-react'
+import { QrCode, X, Loader2, Check, RefreshCw, Smartphone, Copy, Plus } from 'lucide-react'
 import Btn from '@/components/ui/Btn'
 import { Badge } from '@/components/ui/Badge'
 import { Card } from '@/components/ui/Card'
@@ -15,6 +15,7 @@ interface SessionState {
   status: string
   typeName: string
   spaceName?: string
+  itemProps?: PropertyDef[]
   values: Record<string, unknown> | null
   error: string
   expiresAt: number
@@ -42,6 +43,8 @@ export default function MobileScanDialog({
   const [starting, setStarting] = useState(false)
   const [error, setError] = useState('')
   const [values, setValues] = useState<Record<string, string>>({})
+  /** 明细行（多商品小票）：每行一个商品，入库时落地为独立子对象 */
+  const [itemRows, setItemRows] = useState<Record<string, string>[]>([])
   const [committing, setCommitting] = useState(false)
   const [done, setDone] = useState(false)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -82,8 +85,22 @@ export default function MobileScanDialog({
             setDone(true)
           } else if (s.status === 'done' && s.values) {
             const v: Record<string, string> = {}
-            for (const [k, val] of Object.entries(s.values)) v[k] = String(val)
+            const rows: Record<string, string>[] = []
+            for (const [k, val] of Object.entries(s.values)) {
+              if (k === 'items' && Array.isArray(val)) {
+                for (const row of val as Record<string, unknown>[]) {
+                  const r: Record<string, string> = {}
+                  for (const [ik, iv] of Object.entries(row)) r[ik] = String(iv ?? '')
+                  rows.push(r)
+                }
+              } else if (Array.isArray(val)) {
+                v[k] = val.map(String).join('、')
+              } else {
+                v[k] = String(val)
+              }
+            }
             setValues(v)
+            setItemRows(rows)
             if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null }
           }
         } catch { /* 轮询失败静默重试 */ }
@@ -100,7 +117,7 @@ export default function MobileScanDialog({
     setError('')
     try {
       // 走会话端点：done → committed 单向流转，与手机端「确认入库」互斥，天然防双写
-      await api(`/scan-session/${sessionId}/commit`, { method: 'POST', body: { values } })
+      await api(`/scan-session/${sessionId}/commit`, { method: 'POST', body: { values: { ...values, items: itemRows } } })
       setDone(true)
       onCommitted?.()
     } catch (e) { setError(e instanceof Error ? e.message : '入库失败') }
@@ -109,10 +126,11 @@ export default function MobileScanDialog({
 
   function restart() {
     if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null }
-    setSessionId(null); setQrUrl(''); setMobileUrl(''); setState(null); setValues({}); setDone(false); setError('')
+    setSessionId(null); setQrUrl(''); setMobileUrl(''); setState(null); setValues({}); setItemRows([]); setDone(false); setError('')
   }
 
   const fields = target?.properties ?? []
+  const itemFields = state?.itemProps ?? []
   const waiting = !!sessionId && !state?.values
   const minutesLeft = state ? Math.max(0, Math.round((state.expiresAt - Date.now()) / 60000)) : 0
 
@@ -250,6 +268,56 @@ export default function MobileScanDialog({
                           </div>
                         ))}
                       </div>
+
+                      {/* 商品明细行编辑：每行独立入库为子对象 */}
+                      {itemFields.length > 0 && (
+                        <div className="mt-3 border-t border-slate-100 pt-3">
+                          <div className="mb-2 flex items-center justify-between">
+                            <div className="text-[12px] font-semibold text-slate-700">商品明细（{itemRows.length} 条，每条独立入库）</div>
+                            <button
+                              onClick={() => setItemRows([...itemRows, Object.fromEntries(itemFields.map((p) => [p.key, '']))])}
+                              className="flex items-center gap-1 rounded-lg bg-brand-50 px-2 py-1 text-[11px] font-medium text-brand-700"
+                            >
+                              <Plus size={11} /> 添加一行
+                            </button>
+                          </div>
+                          <div className="max-h-56 space-y-2 overflow-y-auto pr-1">
+                            {itemRows.map((row, i) => (
+                              <div key={i} className="rounded-lg border border-slate-100 bg-slate-50/60 p-2">
+                                <div className="mb-1 flex items-center justify-between">
+                                  <span className="text-[10px] font-medium text-slate-400">第 {i + 1} 行</span>
+                                  <button onClick={() => setItemRows(itemRows.filter((_, j) => j !== i))} className="text-slate-400 hover:text-red-500"><X size={12} /></button>
+                                </div>
+                                <div className="grid grid-cols-2 gap-1.5">
+                                  {itemFields.map((p) => (
+                                    <div key={p.key} className={p.key === itemFields[0]?.key ? 'col-span-2' : ''}>
+                                      <div className="mb-0.5 text-[10px] text-slate-400">{p.name}</div>
+                                      {p.type === 'enum' && p.enumValues?.length ? (
+                                        <select
+                                          value={row[p.key] ?? ''}
+                                          onChange={(e) => setItemRows(itemRows.map((r, j) => (j === i ? { ...r, [p.key]: e.target.value } : r)))}
+                                          className="w-full rounded border border-slate-200 bg-white px-1.5 py-1 text-[11px] text-slate-700 focus:border-brand-400 focus:outline-none"
+                                        >
+                                          <option value="">（未识别）</option>
+                                          {p.enumValues.map((v) => <option key={v} value={v}>{v}</option>)}
+                                        </select>
+                                      ) : (
+                                        <input
+                                          value={row[p.key] ?? ''}
+                                          onChange={(e) => setItemRows(itemRows.map((r, j) => (j === i ? { ...r, [p.key]: e.target.value } : r)))}
+                                          className="w-full rounded border border-slate-200 bg-white px-1.5 py-1 text-[11px] text-slate-700 focus:border-brand-400 focus:outline-none"
+                                        />
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            ))}
+                            {itemRows.length === 0 && <div className="rounded border border-dashed border-slate-200 px-3 py-2 text-center text-[11px] text-slate-400">无明细行，可点「添加一行」手动补录</div>}
+                          </div>
+                        </div>
+                      )}
+
                       <div className="mt-3 flex justify-end gap-2 border-t border-slate-100 pt-3">
                         <Btn onClick={restart}>重扫</Btn>
                         <Btn variant="primary" disabled={committing} onClick={commit}>{committing ? '入库中…' : '确认录入'}</Btn>

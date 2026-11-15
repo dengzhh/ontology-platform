@@ -83,6 +83,32 @@ export function findItemTypeId(spaceId: string, sourceTypeId: string): string | 
   return link?.targetTypeId ?? null
 }
 
+/** 模型常见错误形态矫正：多行商品被输出成「列数组」（name/qty/… 各自是 N 元素数组）
+ *  → 重组为行数组 items: [{name, qty, …}, …]，每个商品一条明细，供分析统计 */
+export function pivotArrayFields(values: Record<string, unknown>): Record<string, unknown> {
+  const arrayKeys = Object.entries(values)
+    .filter(([k, v]) => k !== 'items' && Array.isArray(v) && v.length > 0)
+    .map(([k]) => k)
+  if (arrayKeys.length === 0) return values
+  const len = Math.max(...arrayKeys.map((k) => (values[k] as unknown[]).length))
+  const rows: Record<string, unknown>[] = []
+  for (let i = 0; i < len; i++) {
+    const row: Record<string, unknown> = {}
+    let hasVal = false
+    for (const k of arrayKeys) {
+      const arr = values[k] as unknown[]
+      const v = arr[i] ?? ''
+      if (v !== '' && v !== null && v !== undefined) hasVal = true
+      row[k] = v
+    }
+    if (hasVal) rows.push(row)
+  }
+  const out: Record<string, unknown> = { ...values }
+  for (const k of arrayKeys) delete out[k]
+  out.items = Array.isArray(out.items) ? [...(out.items as Record<string, unknown>[]), ...rows] : rows
+  return out
+}
+
 /** 扫描结果落库（PC 确认与手机会话确认共用）：主对象 + items 明细子对象 + 链接 + 审计 */
 export function commitScanObject(opts: {
   spaceId: string
@@ -100,6 +126,14 @@ export function commitScanObject(opts: {
   const items = Array.isArray(rawItems) ? (rawItems.filter((x) => x && typeof x === 'object') as Record<string, unknown>[]) : []
   const mainValues = { ...values }
   delete mainValues.items
+  // 表单编辑后的值是字符串：number 属性按类型定义转回数值，保证消费分析可聚合
+  for (const p of (t.properties ?? []) as { key: string; type: string }[]) {
+    const v = mainValues[p.key]
+    if (p.type === 'number' && typeof v === 'string' && v.trim() !== '') {
+      const n = Number(v.replace(/[^\d.-]/g, ''))
+      if (!Number.isNaN(n)) mainValues[p.key] = n
+    }
+  }
 
   const id = `${t.id}:${Date.now().toString(36)}${Math.floor(Math.random() * 100).toString(36)}`
   const now = Date.now()
@@ -227,13 +261,23 @@ scanRoutes.delete('/templates/:id', async (c) => {
 scanRoutes.get('/targets', (c) => {
   const space = c.get('space')
   const types = db.select().from(tables.objectTypes).all().filter((t) => t.spaceId === space.id)
-  return c.json({
-    targets: types.map((t) => ({
-      id: t.id, name: t.name, color: t.color,
-      properties: (t.properties as { key: string; name: string; type: string; enumValues?: string[] }[]).map((p) => ({
-        key: p.key, name: p.name, type: p.type, enumValues: p.enumValues,
-      })),
+  // 明细类型（被「包含明细」链接指向，如 消费明细 expense_item）不作为扫描目标：
+  // 它是主类型（支出）扫描后 items 的落地形态，直接扫它会引导用户把多商品录成一条记录
+  const itemTypeIds = new Set(
+    db.select().from(tables.linkTypes).all()
+      .filter((l) => l.spaceId === space.id && /item|detail|明细/i.test(l.id + l.name))
+      .map((l) => l.targetTypeId)
+  )
+  const view = (t: typeof types[number]) => ({
+    id: t.id, name: t.name, color: t.color,
+    properties: (t.properties as { key: string; name: string; type: string; enumValues?: string[] }[]).map((p) => ({
+      key: p.key, name: p.name, type: p.type, enumValues: p.enumValues,
     })),
+  })
+  return c.json({
+    targets: types.filter((t) => !itemTypeIds.has(t.id)).map(view),
+    /** 明细类型定义：前端渲染「明细行编辑器」时按 itemTypeId 取字段 */
+    itemTypes: types.filter((t) => itemTypeIds.has(t.id)).map(view),
   })
 })
 
@@ -286,6 +330,8 @@ scanRoutes.post('/recognize', async (c) => {
   if (template?.fieldMapping && Object.keys(template.fieldMapping).length > 0) {
     cleaned = applyMapping(cleaned, template.fieldMapping, props)
   }
+  // 模型把多行商品输出成「列数组」（name/qty… 各为 N 元素数组）时，重组为 items 行数组
+  if (itemTypeId) cleaned = pivotArrayFields(cleaned)
   // 只保留目标类型的有效字段（避免模型输出多余键）；items 作为明细行特殊键保留
   if (target) {
     const valid = new Set(props.map((p) => p.key))
@@ -352,7 +398,7 @@ scanRoutes.post('/recognize-text', async (c) => {
     target ? `目标对象类型：${target.name}。` : '',
     `输出格式：\n{\n${fields || '  "title": "", "amount": 0, "date": "", "notes": ""'}\n}`,
     '规则：只输出 JSON；金额只输出数字；日期 YYYY-MM-DD；输出字段名必须与上面 key 一致；提取不到填空字符串。',
-    itemType ? `文本含商品/服务明细时输出 "items" 数组（字段：${((itemType.properties ?? []) as { key: string }[]).map((p) => p.key).join(', ')}），无明细输出 []。` : '',
+    itemType ? `文本含商品/服务明细时输出 "items" 数组（字段：${((itemType.properties ?? []) as { key: string }[]).map((p) => p.key).join(', ')}），无明细输出 []。每件商品独立一个对象，严禁把多个商品的同一字段合并为数组或拼接字符串。` : '',
     template?.extraPrompt ? `\n【${template.name} · 提取要点】\n${template.extraPrompt}` : '',
     body.hint ? `\n【补充要求】${body.hint}` : '',
   ].filter(Boolean).join('\n')
@@ -407,6 +453,8 @@ scanRoutes.post('/recognize-text', async (c) => {
   if (template?.fieldMapping && Object.keys(template.fieldMapping).length > 0) {
     cleaned = applyMapping(cleaned, template.fieldMapping, props)
   }
+  // 模型把多行商品输出成「列数组」时，同样重组为 items 行数组（与 /recognize 对齐）
+  if (itemTypeId) cleaned = pivotArrayFields(cleaned)
   if (target) {
     const valid = new Set(props.map((p) => p.key))
     if (itemTypeId) valid.add('items')

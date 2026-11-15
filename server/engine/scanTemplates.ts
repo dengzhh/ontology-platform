@@ -161,6 +161,7 @@ export function buildPrompt(typeId: string, spaceId: string, template?: Template
   ]
   if (itemType) {
     lines.push('', `【明细行】若票面有商品/服务明细，请同时输出 "items" 数组（每行字段：${((itemType.properties ?? []) as PropertyDef[]).map((p) => p.key).join(', ')}）；金额为该行小计，无明细时输出空数组 []。`)
+    lines.push('重要：每件商品必须是 items 里独立的一个对象（一商品一行）；严禁把多个商品的同一字段合并成数组（如 "name":["A","B"]）或拼接成一个字符串。')
   }
   if (template?.extraPrompt) {
     lines.push('', `【${template.name} · 场景识别要点】`, template.extraPrompt)

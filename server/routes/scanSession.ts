@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { eq } from 'drizzle-orm'
 import { db, tables } from '../db'
-import { callVision, getVisionConfig, parseJsonLoose, commitScanObject, findItemTypeId } from './scan'
+import { callVision, getVisionConfig, parseJsonLoose, commitScanObject, findItemTypeId, pivotArrayFields } from './scan'
 import { autoMatchTemplate, buildPrompt, applyMapping } from '../engine/scanTemplates'
 
 /**
@@ -26,13 +26,20 @@ interface SessionRow {
 }
 
 function publicView(r: SessionRow) {
+  const types = db.select().from(tables.objectTypes).all()
+  const type = types.find((t) => t.id === r.typeId)
+  const itemType = r.typeId ? types.find((t) => t.id === findItemTypeId(r.spaceId, r.typeId)) : undefined
+  const view = (props: unknown) => (Array.isArray(props) ? props : []) as { key: string; name: string; type: string; enumValues?: string[] }[]
   return {
     id: r.id,
     spaceId: r.spaceId,
     typeId: r.typeId,
     status: r.status,
-    typeName: r.typeId ? (db.select().from(tables.objectTypes).all().find((t) => t.id === r.typeId)?.name ?? '') : '',
+    typeName: type?.name ?? '',
     spaceName: db.select().from(tables.spaces).all().find((s) => s.id === r.spaceId)?.name ?? '',
+    /** 手机端渲染可编辑表单用的字段定义（主字段 + 明细行字段） */
+    props: view(type?.properties).map((p) => ({ key: p.key, name: p.name, type: p.type, enumValues: p.enumValues })),
+    itemProps: itemType ? view(itemType.properties).map((p) => ({ key: p.key, name: p.name, type: p.type, enumValues: p.enumValues })) : [],
     values: r.values,
     error: r.error,
     createdAt: new Date(r.createdAt).toLocaleString('zh-CN', { hour12: false }),
@@ -99,6 +106,12 @@ scanSessionRoutes.post('/:id/upload', async (c) => {
     let cleaned = template?.fieldMapping && Object.keys(template.fieldMapping).length > 0
       ? applyMapping(rawCleaned, template.fieldMapping, props as { key: string; name: string; type: string }[])
       : rawCleaned
+    // 模型把多行商品输出成「列数组」时重组为 items 行数组；items 为特殊键放行
+    const itemTypeId = findItemTypeId(r.spaceId, r.typeId)
+    if (itemTypeId) {
+      cleaned = pivotArrayFields(cleaned)
+      validKeys.add('items')
+    }
     // 只保留有效类型字段 + 数值转换
     if (validKeys.size > 0) {
       cleaned = Object.fromEntries(Object.entries(cleaned).filter(([k]) => validKeys.has(k)))

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Camera, Upload, X, Loader2, Check, RefreshCw, Sparkles, QrCode, FileText, Files, Image as ImageIcon } from 'lucide-react'
+import { Camera, Upload, X, Loader2, Check, RefreshCw, Sparkles, QrCode, FileText, Files, Image as ImageIcon, Plus } from 'lucide-react'
 import Btn from '@/components/ui/Btn'
 import { Badge } from '@/components/ui/Badge'
 import { Card } from '@/components/ui/Card'
@@ -55,8 +55,9 @@ export default function ScanCapture({
   /** fill 模式：回填回调 */
   onFill?: (values: Record<string, string>) => void
 }) {
-  const targetsQ = useApi<{ targets: ScanTarget[] }>('/scan/targets')
+  const targetsQ = useApi<{ targets: ScanTarget[]; itemTypes: ScanTarget[] }>('/scan/targets')
   const targets = targetsQ.data?.targets ?? []
+  const itemTypes = targetsQ.data?.itemTypes ?? []
   const [typeId, setTypeId] = useState(defaultTypeId ?? '')
   const target = targets.find((t) => t.id === typeId)
   const tplQ = useApi<{ templates: ScanTemplate[]; auto: { templateId: string | null; name: string; reason: string } }>(
@@ -76,6 +77,8 @@ export default function ScanCapture({
   const [recognizing, setRecognizing] = useState(false)
   const [error, setError] = useState('')
   const [values, setValues] = useState<Record<string, string>>({})
+  /** 明细行（多商品小票）：每行一个商品，入库时落地为独立子对象 */
+  const [itemRows, setItemRows] = useState<Record<string, string>[]>([])
   const [itemTypeId, setItemTypeId] = useState<string | null>(null)
   const [editing, setEditing] = useState(false)
   const [committing, setCommitting] = useState(false)
@@ -187,14 +190,26 @@ export default function ScanCapture({
       setUsedTemplate(res.templateName ?? '')
       if (res.matchReason) setMatchReason(res.matchReason)
       setItemTypeId(res.itemTypeId ?? null)
-      // 转成字符串表单值；items 是明细数组，用 JSON 保留（表单不渲染它，commit 时后端会拆出来落地）
+      // 转成字符串表单值；items 明细数组提取为独立行编辑（每行入库为独立子对象）
       const v: Record<string, string> = {}
+      const rows: Record<string, string>[] = []
       for (const [k, val] of Object.entries(res.values)) {
-        v[k] = k === 'items' && Array.isArray(val) ? JSON.stringify(val) : String(val)
+        if (k === 'items' && Array.isArray(val)) {
+          for (const row of val as Record<string, unknown>[]) {
+            const r: Record<string, string> = {}
+            for (const [ik, iv] of Object.entries(row)) r[ik] = String(iv ?? '')
+            rows.push(r)
+          }
+        } else if (Array.isArray(val)) {
+          v[k] = val.map(String).join('、')
+        } else {
+          v[k] = String(val)
+        }
       }
       setValues(v)
+      setItemRows(rows)
       setEditing(true)
-      if (Object.keys(v).length === 0) setError('未识别到有效字段，请换张清晰的图片重试')
+      if (Object.keys(v).length === 0 && rows.length === 0) setError('未识别到有效字段，请换张清晰的图片重试')
     } catch (e) {
       const msg = e instanceof Error ? e.message : '识别失败'
       setError(msg.includes('VISION_NOT_CONFIGURED') ? '未配置视觉服务：请先到控制面板配置 AI 网关（bigmodel 支持 glm-4v-flash 视觉模型）' : msg)
@@ -205,7 +220,8 @@ export default function ScanCapture({
     if (!typeId) return setError('请选择录入的目标类型')
     if (Object.keys(values).filter((k) => values[k] !== '').length === 0) return setError('没有可入库的字段')
     if (mode === 'fill') {
-      onFill?.(values)
+      // fill 模式回填父表单：明细以 JSON 字符串随行（父表单提交时后端拆为明细子对象）
+      onFill?.({ ...values, ...(itemRows.length ? { items: JSON.stringify(itemRows) } : {}) })
       onCommitted?.()
       onClose()
       return
@@ -213,12 +229,7 @@ export default function ScanCapture({
     setCommitting(true)
     setError('')
     try {
-      // items 在表单里是 JSON 字符串，提交前还原成数组供后端拆成明细对象
-      const payload: Record<string, unknown> = { ...values }
-      if (typeof values.items === 'string') {
-        try { payload.items = JSON.parse(values.items) } catch { delete payload.items }
-      }
-      await api('/scan/commit', { method: 'POST', body: { typeId, values: payload, itemTypeId: itemTypeId || undefined } })
+      await api('/scan/commit', { method: 'POST', body: { typeId, values: { ...values, items: itemRows }, itemTypeId: itemTypeId || undefined } })
       setDone(true)
       onCommitted?.()
     } catch (e) { setError(e instanceof Error ? e.message : '入库失败') }
@@ -226,11 +237,12 @@ export default function ScanCapture({
   }
 
   function reset() {
-    setImage(''); setPreview(''); setValues({}); setEditing(false); setError(''); setDone(false); setHint('')
+    setImage(''); setPreview(''); setValues({}); setItemRows([]); setEditing(false); setError(''); setDone(false); setHint('')
     setParsedFiles([]); setFileResults([])
   }
 
   const fields = target?.properties ?? []
+  const itemFields = itemTypes.find((t) => t.id === itemTypeId)?.properties ?? []
   const setField = (k: string, v: string) => setValues({ ...values, [k]: v })
 
   return (
@@ -464,6 +476,54 @@ export default function ScanCapture({
                 {fields.length === 0 && (
                   <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-700">
                     未指定目标类型，输出的是通用票据字段。若要直接入库，请选择上方的录入类型后重新识别。
+                  </div>
+                )}
+                {/* 商品明细行编辑：每行独立入库为子对象 */}
+                {itemFields.length > 0 && (
+                  <div className="mt-3 border-t border-slate-100 pt-3">
+                    <div className="mb-2 flex items-center justify-between">
+                      <div className="text-[12px] font-semibold text-slate-700">商品明细（{itemRows.length} 条，每条独立入库）</div>
+                      <button
+                        onClick={() => setItemRows([...itemRows, Object.fromEntries(itemFields.map((p) => [p.key, '']))])}
+                        className="flex items-center gap-1 rounded-lg bg-brand-50 px-2 py-1 text-[11px] font-medium text-brand-700"
+                      >
+                        <Plus size={11} /> 添加一行
+                      </button>
+                    </div>
+                    <div className="max-h-56 space-y-2 overflow-y-auto pr-1">
+                      {itemRows.map((row, i) => (
+                        <div key={i} className="rounded-lg border border-slate-100 bg-slate-50/60 p-2">
+                          <div className="mb-1 flex items-center justify-between">
+                            <span className="text-[10px] font-medium text-slate-400">第 {i + 1} 行</span>
+                            <button onClick={() => setItemRows(itemRows.filter((_, j) => j !== i))} className="text-slate-400 hover:text-red-500"><X size={12} /></button>
+                          </div>
+                          <div className="grid grid-cols-3 gap-1.5">
+                            {itemFields.map((p) => (
+                              <div key={p.key} className={p.key === itemFields[0]?.key ? 'col-span-2' : ''}>
+                                <div className="mb-0.5 text-[10px] text-slate-400">{p.name}</div>
+                                {p.type === 'enum' && p.enumValues?.length ? (
+                                  <select
+                                    value={row[p.key] ?? ''}
+                                    onChange={(e) => setItemRows(itemRows.map((r, j) => (j === i ? { ...r, [p.key]: e.target.value } : r)))}
+                                    className="w-full rounded border border-slate-200 bg-white px-1.5 py-1 text-[11px] text-slate-700 focus:border-brand-400 focus:outline-none"
+                                  >
+                                    <option value="">（未识别）</option>
+                                    {p.enumValues.map((v) => <option key={v} value={v}>{v}</option>)}
+                                  </select>
+                                ) : (
+                                  <input
+                                    value={row[p.key] ?? ''}
+                                    onChange={(e) => setItemRows(itemRows.map((r, j) => (j === i ? { ...r, [p.key]: e.target.value } : r)))}
+                                    className="w-full rounded border border-slate-200 bg-white px-1.5 py-1 text-[11px] text-slate-700 focus:border-brand-400 focus:outline-none"
+                                  />
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                      {itemRows.length === 0 && <div className="rounded border border-dashed border-slate-200 px-3 py-2 text-center text-[11px] text-slate-400">无明细行，可点「添加一行」手动补录</div>}
+                    </div>
                   </div>
                 )}
                 <div className="mt-4 flex justify-end gap-2 border-t border-slate-100 pt-3">

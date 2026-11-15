@@ -1,19 +1,22 @@
 import { useEffect, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { Camera, Upload, Loader2, Check, X, RefreshCw, Smartphone, AlertCircle } from 'lucide-react'
+import { Camera, Upload, Loader2, Check, X, RefreshCw, Smartphone, AlertCircle, Plus, Trash2 } from 'lucide-react'
 
 const API = '/api/scan-session'
 
+interface PropertyDef { key: string; name: string; type: string; enumValues?: string[] }
 interface SessionState {
   id: string
   status: string
   typeName: string
   spaceName: string
+  props: PropertyDef[]
+  itemProps: PropertyDef[]
   values: Record<string, unknown> | null
   error: string
 }
 
-/** 手机端扫码协同页（/m/:id，免登录） */
+/** 手机端扫码协同页（/m/:id，免登录）：拍照 → 识别 → 可编辑核对（主字段 + 明细行）→ 确认入库 */
 export default function MobileScan() {
   const { id = '' } = useParams()
   const [state, setState] = useState<SessionState | null>(null)
@@ -21,6 +24,9 @@ export default function MobileScan() {
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
   const [preview, setPreview] = useState('')
+  /** 编辑态：主字段（key→字符串）与明细行（每行 key→字符串） */
+  const [main, setMain] = useState<Record<string, string>>({})
+  const [items, setItems] = useState<Record<string, string>[]>([])
   const fileRef = useRef<HTMLInputElement>(null)
 
   async function load() {
@@ -41,6 +47,32 @@ export default function MobileScan() {
     }, 3000)
     return () => clearInterval(timer)
   }, [id, state?.status])
+
+  /** 识别结果 → 可编辑表单值（主字段 + items 明细行，全部转字符串） */
+  function initEdit(vals: Record<string, unknown>) {
+    const m: Record<string, string> = {}
+    const rows: Record<string, string>[] = []
+    for (const [k, v] of Object.entries(vals)) {
+      if (k === 'items' && Array.isArray(v)) {
+        for (const row of v as Record<string, unknown>[]) {
+          const r: Record<string, string> = {}
+          for (const [ik, iv] of Object.entries(row)) r[ik] = String(iv ?? '')
+          rows.push(r)
+        }
+      } else if (Array.isArray(v)) {
+        m[k] = v.map(String).join('、')
+      } else {
+        m[k] = String(v ?? '')
+      }
+    }
+    setMain(m)
+    setItems(rows)
+  }
+
+  // 识别完成（done）时初始化编辑表单（轮询与 upload 两条路径都会走到）
+  useEffect(() => {
+    if (state?.status === 'done' && state.values) initEdit(state.values)
+  }, [state?.status, state?.values])
 
   function readFile(f: File) {
     const reader = new FileReader()
@@ -101,7 +133,7 @@ export default function MobileScan() {
     finally { setBusy(false); setPreview(''); if (fileRef.current) fileRef.current.value = '' }
   }
 
-  /** 手机端直接确认入库：识别结果落成对象（无需回电脑操作），会话标记 committed */
+  /** 手机端直接确认入库：编辑后的主字段 + 明细行落成对象（明细为独立子对象），会话标记 committed */
   async function commit() {
     setBusy(true)
     setErr('')
@@ -109,7 +141,7 @@ export default function MobileScan() {
       const res = await fetch(`${API}/${id}/commit`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
+        body: JSON.stringify({ values: { ...main, items } }),
       })
       const j = await res.json()
       if (!res.ok) { setErr(j.error ?? '入库失败'); return }
@@ -120,7 +152,7 @@ export default function MobileScan() {
 
   /** 「继续拍下一张」：先重置服务端会话（否则轮询会把旧结果拉回来、且第二次上传会 409），再回到拍照态 */
   async function reset() {
-    setPreview(''); setErr('')
+    setPreview(''); setErr(''); setMain({}); setItems([])
     setState((s) => (s ? { ...s, status: 'waiting', values: null, error: '' } : s))
     try {
       const res = await fetch(`${API}/${id}/reset`, { method: 'POST' })
@@ -138,6 +170,32 @@ export default function MobileScan() {
     )
   }
 
+  const fields = state?.props?.length ? state.props : Object.keys(main).map((k) => ({ key: k, name: k, type: 'string' }))
+  const itemFields = state?.itemProps ?? []
+
+  function fieldInput(p: PropertyDef, value: string, onChange: (v: string) => void) {
+    if (p.type === 'enum' && p.enumValues?.length) {
+      return (
+        <select
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className="w-full rounded-lg border border-slate-200 bg-white px-2 py-2 text-[13px] text-slate-700 focus:border-brand-400 focus:outline-none"
+        >
+          <option value="">（未识别）</option>
+          {p.enumValues.map((v) => <option key={v} value={v}>{v}</option>)}
+        </select>
+      )
+    }
+    return (
+      <input
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        inputMode={p.type === 'number' ? 'decimal' : undefined}
+        className="w-full rounded-lg border border-slate-200 bg-white px-2 py-2 text-[13px] text-slate-700 focus:border-brand-400 focus:outline-none"
+      />
+    )
+  }
+
   return (
     <div className="min-h-screen bg-slate-100 pb-8">
       {/* 顶部品牌 */}
@@ -146,7 +204,7 @@ export default function MobileScan() {
           <Smartphone size={18} />
           <div>
             <div className="text-base font-bold">OntoOS 手机扫描助手</div>
-            <div className="text-[11px] text-white/70">拍照上传 → 电脑端自动接收识别结果</div>
+            <div className="text-[11px] text-white/70">拍照上传 → 识别核对 → 直接入库</div>
           </div>
         </div>
       </div>
@@ -179,7 +237,8 @@ export default function MobileScan() {
             <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-emerald-50 text-emerald-500"><Check size={28} /></div>
             <div className="text-base font-bold text-slate-900">已录入「{state.typeName || '对象'}」</div>
             <div className="mt-1 text-xs text-slate-500">
-              数据已写入「{state.spaceName || '当前'}」空间的「{state.typeName || '对象'}」类型
+              {items.length > 0 && `含 ${items.length} 条商品明细 · `}
+              数据已写入「{state.spaceName || '当前'}」空间
             </div>
             <div className="mt-1 text-xs text-slate-500">可在电脑端「对象浏览器」切换到该空间查看与编辑</div>
             <button onClick={reset} className="mt-4 w-full rounded-xl bg-brand-600 py-3 text-sm font-semibold text-white">
@@ -187,27 +246,68 @@ export default function MobileScan() {
             </button>
           </div>
         ) : state?.status === 'done' ? (
-          <div className="rounded-2xl border border-emerald-200 bg-white p-5 text-center shadow-card">
-            <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-emerald-50 text-emerald-500"><Check size={28} /></div>
-            <div className="text-base font-bold text-slate-900">识别完成！</div>
-            <div className="mt-1 text-xs text-slate-500">请核对以下识别结果，确认后直接入库</div>
-            {state.values && (
-              <div className="mt-4 space-y-1.5 rounded-xl bg-slate-50 p-3 text-left">
-                {Object.entries(state.values).map(([k, v]) => (
-                  <div key={k} className="flex justify-between gap-3 text-[12px]">
-                    <span className="text-slate-400">{k}</span>
-                    <span className="truncate font-medium text-slate-700">{String(v)}</span>
-                  </div>
-                ))}
+          <div className="rounded-2xl border border-emerald-200 bg-white p-4 shadow-card">
+            <div className="mb-3 flex items-center gap-2">
+              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-emerald-50 text-emerald-500"><Check size={18} /></div>
+              <div>
+                <div className="text-sm font-bold text-slate-900">识别完成，请核对修正</div>
+                <div className="text-[11px] text-slate-400">识别有误的字段可直接点击修改</div>
+              </div>
+            </div>
+
+            {/* 主字段编辑 */}
+            <div className="space-y-2.5">
+              {fields.map((p) => (
+                <div key={p.key}>
+                  <div className="mb-1 text-[11px] font-medium text-slate-500">{p.name}</div>
+                  {fieldInput(p, main[p.key] ?? '', (v) => setMain({ ...main, [p.key]: v }))}
+                </div>
+              ))}
+            </div>
+
+            {/* 明细行编辑（目标类型有配套明细类型时） */}
+            {itemFields.length > 0 && (
+              <div className="mt-4 border-t border-slate-100 pt-3">
+                <div className="mb-2 flex items-center justify-between">
+                  <div className="text-[12px] font-semibold text-slate-700">商品明细（{items.length} 条）</div>
+                  <button
+                    onClick={() => setItems([...items, Object.fromEntries(itemFields.map((p) => [p.key, '']))])}
+                    className="flex items-center gap-1 rounded-lg bg-brand-50 px-2 py-1 text-[11px] font-medium text-brand-700"
+                  >
+                    <Plus size={12} /> 添加一行
+                  </button>
+                </div>
+                <div className="space-y-2">
+                  {items.map((row, i) => (
+                    <div key={i} className="rounded-xl border border-slate-100 bg-slate-50/60 p-2.5">
+                      <div className="mb-1.5 flex items-center justify-between">
+                        <span className="text-[10px] font-medium text-slate-400">第 {i + 1} 行</span>
+                        <button onClick={() => setItems(items.filter((_, j) => j !== i))} className="flex items-center gap-1 text-[10px] text-slate-400 hover:text-red-500">
+                          <Trash2 size={11} /> 删除
+                        </button>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        {itemFields.map((p) => (
+                          <div key={p.key} className={p.key === itemFields[0]?.key ? 'col-span-2' : ''}>
+                            <div className="mb-0.5 text-[10px] text-slate-400">{p.name}</div>
+                            {fieldInput(p, row[p.key] ?? '', (v) => setItems(items.map((r, j) => (j === i ? { ...r, [p.key]: v } : r))))}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                  {items.length === 0 && <div className="rounded-lg bg-slate-50 px-3 py-2 text-center text-[11px] text-slate-400">无明细，可点「添加一行」手动补录</div>}
+                </div>
               </div>
             )}
+
             <button onClick={commit} disabled={busy} className="mt-4 w-full rounded-xl bg-brand-600 py-3 text-sm font-semibold text-white disabled:opacity-50">
               <span className="inline-flex items-center gap-1.5">{busy ? <><Loader2 size={14} className="animate-spin" /> 入库中…</> : <><Check size={14} /> 确认入库</>}</span>
             </button>
             <button onClick={reset} className="mt-2 w-full rounded-xl border border-slate-200 py-2.5 text-[13px] font-medium text-slate-600">
               <span className="inline-flex items-center gap-1.5"><RefreshCw size={13} /> 重拍（不入库）</span>
             </button>
-            <p className="mt-2 text-[11px] text-slate-400">结果同步保存在会话中，也可回电脑端「对象浏览器 → 扫描录入」核对入库</p>
+            <p className="mt-2 text-center text-[11px] text-slate-400">每条商品明细会作为独立记录入库，支持按商品统计分析</p>
           </div>
         ) : (
           <>
