@@ -387,11 +387,32 @@ objectRoutes.delete('/:id', async (c) => {
   if (permOf(user, space, o.typeId) !== 'full') return c.json({ error: '只读权限，无法删除' }, 403)
   const t = db.select().from(tables.objectTypes).all().find((x) => x.id === o.typeId && x.spaceId === space.id)!
   const allLinks = db.select().from(tables.objectLinks).all().filter((l) => (l.sourceId === id || l.targetId === id) && l.spaceId === space.id)
+
+  // 组合关系级联：「包含明细」链接（如 支出→消费明细）指向的子对象随主对象一并删除，
+  // 否则残留孤儿明细会污染按商品的统计；其他关联（如 支出账户）仅断开不删对端
+  const itemLinkTypeIds = new Set(
+    db.select().from(tables.linkTypes).all()
+      .filter((lt) => lt.spaceId === space.id && /item|detail|明细/i.test(lt.id + lt.name))
+      .map((lt) => lt.id)
+  )
+  const childIds = allLinks.filter((l) => l.sourceId === id && itemLinkTypeIds.has(l.linkTypeId)).map((l) => l.targetId)
+  let cascadedItems = 0
+  for (const childId of childIds) {
+    const child = db.select().from(tables.objects).where(eq(tables.objects.id, childId)).get()
+    if (!child || child.spaceId !== space.id) continue
+    for (const cl of db.select().from(tables.objectLinks).all().filter((l) => (l.sourceId === childId || l.targetId === childId) && l.spaceId === space.id)) {
+      db.delete(tables.objectLinks).where(eq(tables.objectLinks.id, cl.id)).run()
+    }
+    db.delete(tables.objects).where(eq(tables.objects.id, childId)).run()
+    fireObjectEvent(space.id, child.typeId, childId, 'delete', (child.values as Record<string, unknown>), user.name)
+    cascadedItems++
+  }
+
   for (const l of allLinks) db.delete(tables.objectLinks).where(eq(tables.objectLinks.id, l.id)).run()
   db.delete(tables.objects).where(eq(tables.objects.id, id)).run()
-  audit(user, '删除对象', `${t.name} ${id}`, { cascadedLinks: allLinks.length })
+  audit(user, '删除对象', `${t.name} ${id}`, { cascadedLinks: allLinks.length, cascadedItems })
   fireObjectEvent(space.id, o.typeId, id, 'delete', (o.values as Record<string, unknown>), user.name)
-  return c.json({ ok: true, cascadedLinks: allLinks.length })
+  return c.json({ ok: true, cascadedLinks: allLinks.length, cascadedItems })
 })
 
 /* ---------------- 链接实例 ---------------- */

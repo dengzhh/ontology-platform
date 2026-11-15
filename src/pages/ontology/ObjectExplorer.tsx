@@ -273,8 +273,12 @@ export default function ObjectExplorer() {
     if (!selectedObj) return
     setBusy(true)
     try {
-      const res = await api<{ ok: boolean; cascadedLinks: number }>(`/objects/${selectedObj}`, { method: 'DELETE' })
-      notify(res.cascadedLinks > 0 ? `实例已删除，级联清理 ${res.cascadedLinks} 条关联（审计留痕）` : '实例已删除（审计留痕）')
+      const res = await api<{ ok: boolean; cascadedLinks: number; cascadedItems?: number }>(`/objects/${selectedObj}`, { method: 'DELETE' })
+      const parts = [
+        res.cascadedItems ? `一并删除 ${res.cascadedItems} 条明细` : '',
+        res.cascadedLinks ? `断开 ${res.cascadedLinks} 条关联` : '',
+      ].filter(Boolean).join('，')
+      notify(`实例已删除${parts ? `（${parts}，审计留痕）` : '（审计留痕）'}`)
       setSelectedObj(null)
       setConfirmDel(false)
       listQ.reload()
@@ -731,16 +735,31 @@ export default function ObjectExplorer() {
                 }
               />
               <div className="mb-3 rounded-lg border border-slate-100 bg-slate-50/60 p-3">
-                {confirmDel && detail.links.length > 0 && (
-                  <div className="mb-2.5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] leading-5 text-amber-700">
-                    <b>依赖警告：删除将同时断开 {detail.links.length} 条关联</b>
-                    <div className="mt-1 text-amber-600">
-                      {detail.links.slice(0, 4).map((l) => `${l.linkTypeName} → ${l.otherType}·${l.otherName}`).join('；')}
-                      {detail.links.length > 4 ? ` 等 ${detail.links.length} 条` : ''}
+                {confirmDel && detail.links.length > 0 && (() => {
+                  // 明细组合关系（如 支出→消费明细）将级联删除子对象；其他关联仅断开
+                  const itemLinks = detail.links.filter((l) => /明细|item|detail/i.test(l.linkTypeName))
+                  const otherLinks = detail.links.filter((l) => !/明细|item|detail/i.test(l.linkTypeName))
+                  return (
+                    <div className="mb-2.5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] leading-5 text-amber-700">
+                      {itemLinks.length > 0 && (
+                        <>
+                          <b>将一并删除 {itemLinks.length} 条明细子对象</b>
+                          <div className="mt-0.5 text-amber-600">{itemLinks.slice(0, 4).map((l) => l.otherName || l.otherType).join('；')}{itemLinks.length > 4 ? ` 等 ${itemLinks.length} 条` : ''}</div>
+                        </>
+                      )}
+                      {otherLinks.length > 0 && (
+                        <>
+                          <b className={itemLinks.length > 0 ? 'mt-1.5 block' : ''}>将断开 {otherLinks.length} 条关联（对端对象保留）</b>
+                          <div className="mt-0.5 text-amber-600">
+                            {otherLinks.slice(0, 4).map((l) => `${l.linkTypeName} → ${l.otherType}·${l.otherName}`).join('；')}
+                            {otherLinks.length > 4 ? ` 等 ${otherLinks.length} 条` : ''}
+                          </div>
+                        </>
+                      )}
+                      <div className="mt-0.5 text-amber-500">删除后不可恢复，审计中有留痕</div>
                     </div>
-                    <div className="mt-0.5 text-amber-500">对端对象本身不会被删除，但业务关联将不可恢复</div>
-                  </div>
-                )}
+                  )
+                })()}
                 <KVList
                   cols={1}
                   items={props.map((p) => ({
