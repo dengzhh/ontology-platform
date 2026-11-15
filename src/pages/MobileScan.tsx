@@ -100,8 +100,15 @@ export default function MobileScan() {
     finally { setBusy(false); setPreview(''); if (fileRef.current) fileRef.current.value = '' }
   }
 
-  function reset() {
-    setPreview(''); setErr(''); setState((s) => (s ? { ...s, status: 'waiting', values: null, error: '' } : s))
+  /** 「继续拍下一张」：先重置服务端会话（否则轮询会把旧结果拉回来、且第二次上传会 409），再回到拍照态 */
+  async function reset() {
+    setPreview(''); setErr('')
+    setState((s) => (s ? { ...s, status: 'waiting', values: null, error: '' } : s))
+    try {
+      const res = await fetch(`${API}/${id}/reset`, { method: 'POST' })
+      const j = await res.json().catch(() => ({}))
+      if (!res.ok) setErr(j.error ?? '会话重置失败，如已过期请在电脑上重新生成二维码')
+    } catch { setErr('网络连接失败，请确认手机与电脑在同一网络') }
   }
 
   if (loading) {

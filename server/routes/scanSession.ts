@@ -118,6 +118,17 @@ scanSessionRoutes.post('/:id/upload', async (c) => {
   }
 })
 
+/** 手机端：重置会话为待拍照（免登录，同一二维码可连续拍多张）
+ *  不重置服务端的话：轮询会把旧结果拉回手机页，且第二次 upload 会命中「该会话已完成」409 */
+scanSessionRoutes.post('/:id/reset', async (c) => {
+  const id = c.req.param('id')
+  const r = db.select().from(tables.scanSessions).where(eq(tables.scanSessions.id, id)).get() as unknown as SessionRow | undefined
+  if (!r) return c.json({ error: '会话不存在' }, 404)
+  if (Date.now() > r.expiresAt) return c.json({ error: '二维码已过期，请在电脑上重新生成' }, 410)
+  db.update(tables.scanSessions).set({ status: 'waiting', image: '', values: null, error: '' }).where(eq(tables.scanSessions.id, id)).run()
+  return c.json({ ok: true })
+})
+
 /** PC 端：创建会话（需登录，从 Authorization 读用户） */
 scanSessionRoutes.post('/create', async (c) => {
   // 复用 auth 的 JWT 解析
