@@ -123,6 +123,8 @@ export default function ScanCapture({
     setError('')
     const results: { name: string; values: Record<string, unknown>; itemTypeId?: string | null; error?: string }[] = []
     for (const pf of parsedFiles) {
+      // 解析阶段就失败的文件（HEIC 无法解码等）：直接标注结果，不送识别
+      if (pf.error) { results.push({ name: pf.name, values: {}, error: pf.error }); continue }
       try {
         let res: RecognizeResp
         if (pf.image && !pf.text) {

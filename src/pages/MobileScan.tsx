@@ -45,6 +45,11 @@ export default function MobileScan() {
     const reader = new FileReader()
     reader.onload = () => {
       const img = new Image()
+      // HEIC/HDR（iOS 相册"高效"格式）等浏览器无法解码的图片：给出明确指引而非静默失败
+      img.onerror = () => {
+        setErr('该照片格式无法在浏览器内处理（可能为 iPhone 高效格式 HEIC）。请在「设置 → 相机 → 格式」选"兼容性最佳"后重拍，或改用拍照直接上传')
+        setPreview('')
+      }
       img.onload = () => {
         // 压缩到最长边 1400px、JPEG 0.82，减少上传体积
         const scale = Math.min(1, 1400 / Math.max(img.width, img.height))
@@ -55,7 +60,23 @@ export default function MobileScan() {
         ctx.fillStyle = '#fff'
         ctx.fillRect(0, 0, canvas.width, canvas.height)
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
-        setPreview(canvas.toDataURL('image/jpeg', 0.82))
+        let out = canvas.toDataURL('image/jpeg', 0.82)
+        // 部分安卓内核（X5/UC）对大画布会返回 data:, 或 webp：再画一块干净画布强制重编码一次
+        if (!/^data:image\/jpe?g/i.test(out)) {
+          const c2 = document.createElement('canvas')
+          c2.width = canvas.width; c2.height = canvas.height
+          const ctx2 = c2.getContext('2d')!
+          ctx2.fillStyle = '#fff'
+          ctx2.fillRect(0, 0, c2.width, c2.height)
+          ctx2.drawImage(canvas, 0, 0)
+          out = c2.toDataURL('image/jpeg', 0.82)
+        }
+        if (!/^data:image\/jpe?g/i.test(out)) {
+          setErr('当前浏览器无法把照片转换为 JPEG，请改用系统相机拍照后从相册选择上传')
+          setPreview('')
+          return
+        }
+        setPreview(out)
       }
       img.src = String(reader.result)
     }

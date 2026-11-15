@@ -229,7 +229,13 @@ function cleanData() {
   for (const t of NAMES.approvalTitles) run('DELETE FROM approvals WHERE title LIKE ?', '%' + t.slice(0, 20) + '%')
   for (const k of NAMES.apiKeys) run('DELETE FROM api_keys WHERE name=?', k)
   for (const d of NAMES.deployments) run('DELETE FROM deployments WHERE version LIKE ? OR message LIKE ?', d + '%', '%' + d + '%')
-  for (const s of NAMES.settingKeys) run('DELETE FROM settings WHERE key=?', s)
+  // settings：仅删除「仍等于脚本默认值」的 key（用户配置过的端点/密钥/模型不动）
+  const SETTING_DEFAULTS = { features: { marketplace: true, scanTemplates: true, workflowPresets: true } }
+  for (const s of NAMES.settingKeys) {
+    const row = raw('SELECT value FROM settings WHERE key=?', s)[0]
+    if (!row) continue
+    if (SETTING_DEFAULTS[s] && JSON.stringify(JSON.parse(String(row.value))) === JSON.stringify(SETTING_DEFAULTS[s])) run('DELETE FROM settings WHERE key=?', s)
+  }
   run('DELETE FROM cipher_rules WHERE name IN (' + NAMES.cipherRules.map(() => '?').join(',') + ')', ...NAMES.cipherRules)
   run('DELETE FROM scan_findings WHERE table_name IN (' + NAMES.scanFindingTables.map(() => '?').join(',') + ')', ...NAMES.scanFindingTables)
   run('DELETE FROM lifecycle_policies WHERE name IN (' + NAMES.lifecyclePolicies.map(() => '?').join(',') + ')', ...NAMES.lifecyclePolicies)
@@ -979,7 +985,7 @@ cleanData()
     run('INSERT OR REPLACE INTO ai_conversations (id, title, scene, user_id, space_id, created_at) VALUES (?, ?, ?, ?, ?, ?)',
       threadId, '《注塑机液压系统维护规程》检修要点分析', 'thread', 'chen.xingye', ORG, now)
     run('INSERT OR REPLACE INTO ai_messages (id, conversation_id, role, content, created_at) VALUES (?, ?, ?, ?, ?)',
-      'AM-TH-01', threadId, 'system', '引用文档：注塑机液压系统维护规程、CNC 主轴保养手册', now - 2)
+      'AM-TH-01', threadId, 'system', '本分析引用的文档：注塑机液压系统维护规程、CNC 主轴保养手册', now - 2)
     run('INSERT OR REPLACE INTO ai_messages (id, conversation_id, role, content, created_at) VALUES (?, ?, ?, ?, ?)',
       'AM-TH-02', threadId, 'user', '提取液压油封型号、更换周期与油温阈值，列出检修要点', now - 1)
     run('INSERT OR REPLACE INTO ai_messages (id, conversation_id, role, content, created_at) VALUES (?, ?, ?, ?, ?)',
@@ -996,21 +1002,22 @@ cleanData()
   const applyRes = await api('POST', '/api/logic/workflows/PRESET-DEVICE-TRIAGE/run', { input: '设备 F1-IM-2101 健康度 42，停机 12 小时', mode: 'apply' }, ORG, 200, 20000)
   ok('工作流·apply 真实动作样例', { ok: applyRes.ok && (applyRes.data?.actions ?? []).some((a) => a.status === 'done' && a.refId), status: applyRes.status, data: applyRes.data }, `actions=${(applyRes.data?.actions ?? []).length}`)
 
-  /* ④ 控制面板四卡配置（直插 settings，可复现） */
-  const cfg = [
+  /* ④ 控制面板示例配置：仅在 key 不存在时写入默认（不覆盖用户已配置的端点/密钥/模型） */
+  const cfgDefaults = [
     ['smtp', { host: 'smtp.example.com', port: 465, user: 'it@example.com', from: 'noreply@example.com', fromName: 'OntoOS 平台', ssl: true }],
     ['embedding', { model: 'embedding-2', endpoint: '', apiKey: '', enabled: true }],
-    ['vision', { model: 'glm-ocr', textModel: 'hy4free', endpoint: '', apiKey: '' }],
+    // 视觉默认用 chat/completions 兼容的 glm-4v-flash（glm-ocr 是专用 OCR 协议模型，不支持 image_url 传图）
+    ['vision', { model: 'glm-4v-flash', textModel: '', endpoint: '', apiKey: '' }],
     ['features', { marketplace: true, scanTemplates: true, workflowPresets: true }],
   ]
-  for (const [key, value] of cfg) {
-    const ex = raw('SELECT key FROM settings WHERE key=?', key)[0]
-    if (ex) run('UPDATE settings SET value=?, updated_at=? WHERE key=?', JSON.stringify(value), now, key)
-    else run('INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)', key, JSON.stringify(value), now)
+  for (const [key, value] of cfgDefaults) {
+    if (!raw('SELECT key FROM settings WHERE key=?', key)[0]) {
+      run('INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)', key, JSON.stringify(value), now)
+    }
   }
   const cfgBack = raw('SELECT key, value FROM settings WHERE key IN (' + NAMES.settingKeys.map(() => '?').join(',') + ')', ...NAMES.settingKeys)
   const cfgOk = cfgBack.length === NAMES.settingKeys.length && cfgBack.every((r) => { try { return Object.keys(JSON.parse(String(r.value))).length > 0 } catch { return false } })
-  ok('控制面板·四卡已保存配置可复现', { ok: cfgOk, status: cfgOk ? 200 : 0, data: {} }, cfgOk ? '4 个 settings key 回读校验通过' : '配置回读校验失败')
+  ok('控制面板·四卡配置存在（不覆盖用户已配置项）', { ok: cfgOk, status: cfgOk ? 200 : 0, data: {} }, cfgOk ? '4 个 settings key 就绪' : '配置缺失')
 
   /* ⑤ 审批三态：待审批 / 已通过 / 已驳回 */
   const acts = (await api('GET', '/api/actions')).data?.actions ?? []

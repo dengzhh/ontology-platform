@@ -12,7 +12,7 @@ import * as mammoth from 'mammoth'
 pdfjs.GlobalWorkerOptions.workerSrc = workerUrl
 
 export interface ParsedFile {
-  /** 送视觉模型的图片（dataURL） */
+  /** 送视觉模型的图片（dataURL，恒为 JPEG/PNG） */
   image?: string
   /** 提取的纯文本（供文本识别/兜底） */
   text?: string
@@ -22,6 +22,8 @@ export interface ParsedFile {
   kind: 'image' | 'pdf' | 'word' | 'text'
   /** 页数（PDF） */
   pages?: number
+  /** 无法处理的原因（如 HEIC 无法解码）；带 error 的项不应送去识别 */
+  error?: string
 }
 
 /** 把任意 File 解析成可识别的输入 */
@@ -30,10 +32,17 @@ export async function parseFile(file: File): Promise<ParsedFile> {
   const lower = name.toLowerCase()
 
   // 图片
-  if (file.type.startsWith('image/') || /\.(png|jpe?g|webp|bmp|gif)$/.test(lower)) {
+  if (file.type.startsWith('image/') || /\.(png|jpe?g|webp|bmp|gif|heic|heif)$/i.test(lower)) {
     const dataUrl = await readAsDataURL(file)
-    // 压缩大图（同手机端逻辑）
-    return { name, kind: 'image', image: await compressImage(dataUrl) }
+    // 压缩并归一为 JPEG（HEIC 等浏览器无法解码的格式会得到空串，转为明确 error 而非把原图发给视觉模型导致 400）
+    const image = await compressImage(dataUrl)
+    if (!image) {
+      return { name, kind: 'image', text: '', error: '该图片格式无法在浏览器内处理（可能为 iPhone 高效格式 HEIC/HEIF）。请在「设置 → 相机 → 格式」选"兼容性最佳"后重新拍照，或改用 JPG/PNG 文件' }
+    }
+    if (!/^data:image\/(jpe?g|png)/i.test(image)) {
+      return { name, kind: 'image', text: '', error: '该图片经浏览器压缩后仍非 JPEG/PNG，请改用 JPG/PNG 文件上传' }
+    }
+    return { name, kind: 'image', image }
   }
 
   // PDF
@@ -80,7 +89,7 @@ function readAsDataURL(file: File): Promise<string> {
   })
 }
 
-/** 压缩图片：最长边 1600px、JPEG 0.85 */
+/** 压缩图片：最长边 1600px、JPEG 0.85；无法解码（HEIC/HDR 等）返回空串，由调用方转为明确错误 */
 export function compressImage(dataUrl: string, maxEdge = 1600, quality = 0.85): Promise<string> {
   return new Promise((resolve) => {
     const img = new Image()
@@ -93,9 +102,21 @@ export function compressImage(dataUrl: string, maxEdge = 1600, quality = 0.85): 
       ctx.fillStyle = '#ffffff'
       ctx.fillRect(0, 0, canvas.width, canvas.height)
       ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
-      resolve(canvas.toDataURL('image/jpeg', quality))
+      const out = canvas.toDataURL('image/jpeg', quality)
+      // 部分安卓内核对大画布返回 data:, / webp：二次干净画布重编码
+      if (/^data:image\/jpe?g/i.test(out)) resolve(out)
+      else {
+        const c2 = document.createElement('canvas')
+        c2.width = canvas.width; c2.height = canvas.height
+        const ctx2 = c2.getContext('2d')!
+        ctx2.fillStyle = '#fff'
+        ctx2.fillRect(0, 0, c2.width, c2.height)
+        ctx2.drawImage(canvas, 0, 0)
+        const retry = c2.toDataURL('image/jpeg', quality)
+        resolve(/^data:image\/jpe?g/i.test(retry) ? retry : '')
+      }
     }
-    img.onerror = () => resolve(dataUrl)
+    img.onerror = () => resolve('')
     img.src = dataUrl
   })
 }

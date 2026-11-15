@@ -62,6 +62,10 @@ scanSessionRoutes.post('/:id/upload', async (c) => {
 
   const body = await c.req.json<{ image: string }>()
   if (!body.image) return c.json({ error: '缺少图片数据' }, 400)
+  // 视觉网关仅收 JPEG/PNG：非 JPEG/PNG 前缀（webp/heic 等）直接给出可操作提示，不落库不调模型
+  if (!/^data:image\/(jpe?g|png)/i.test(body.image)) {
+    return c.json({ error: '仅支持 JPG/JPEG/PNG 格式图片（当前为 ' + (String(body.image).slice(0, 24) || '未知格式') + '…）。请在手机「相机 → 格式」选择兼容模式后重拍' }, 400)
+  }
 
   db.update(tables.scanSessions).set({ status: 'uploaded', image: body.image, error: '' }).where(eq(tables.scanSessions.id, id)).run()
 
