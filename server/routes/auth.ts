@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { eq } from 'drizzle-orm'
 import { db, tables } from '../db'
 import { loadSessionUser, issueToken, setSessionCookie, verifyPassword, buildSessionUser, verifyInviteToken, hashPassword } from '../auth'
+import { clientIp, loginLockedRemaining, recordLoginFail, recordLoginOk } from '../security'
 
 export const authRoutes = new Hono()
 
@@ -22,23 +23,34 @@ authRoutes.post('/activate', async (c) => {
   return c.json({ ok: true, account: row.account })
 })
 
-/** 登录：返回 JWT + 会话用户 */
+/** 登录：返回 JWT + 会话用户（带防爆破：同账号+IP 连续失败 5 次锁 15 分钟） */
 authRoutes.post('/login', async (c) => {
   const { account, password } = await c.req.json<{ account: string; password: string }>()
   if (!account || !password) return c.json({ error: '请输入账号与密码' }, 400)
+  const ip = clientIp(c)
+  const locked = loginLockedRemaining(account, ip)
+  if (locked > 0) {
+    return c.json({ error: `尝试次数过多已锁定，请 ${Math.ceil(locked / 60000)} 分钟后再试` }, 429)
+  }
   const row = db.select().from(tables.users).where(eq(tables.users.account, account)).get()
   if (!row || !verifyPassword(password, row.passwordHash)) {
+    recordLoginFail(account, ip)
+    db.insert(tables.auditEvents).values({
+      id: `AE-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      actor: account, action: '登录失败', target: account, ip, createdAt: Date.now(),
+    }).run()
     return c.json({ error: '账号或密码错误' }, 401)
   }
   if (row.status === '待激活') return c.json({ error: '账号尚未激活，请先通过邀请邮件中的链接设置密码' }, 403)
   if (row.status !== '在职') return c.json({ error: '账号已停用，请联系管理员' }, 403)
+  recordLoginOk(account, ip)
   db.update(tables.users).set({ lastLoginAt: new Date().toLocaleString('zh-CN', { hour12: false }) }).where(eq(tables.users.id, row.id)).run()
   const token = await issueToken(row.id)
   setSessionCookie(c, token)
   // audit
   db.insert(tables.auditEvents).values({
     id: `AE-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-    actor: row.name, action: '登录平台', target: row.account, ip: '本地',
+    actor: row.name, action: '登录平台', target: row.account, ip,
     createdAt: Date.now(),
   }).run()
   const user = buildSessionUser(row.id)

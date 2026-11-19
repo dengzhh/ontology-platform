@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { eq } from 'drizzle-orm'
 import { db, tables } from '../db'
 import { requireAuth, requireAdmin } from '../auth'
+import { decodeCfg, encodeCfg } from '../secretbox'
 import { AI_TOOLS, NAV_HINTS, TYPE_ALIASES } from '../../shared/ai-tools'
 import { certifiedTermDigest, resolveTerms, semanticGuard } from '../engine/semantic'
 import type { SessionUser } from '../../shared/types'
@@ -15,7 +16,7 @@ interface AiConfig {
 function getAiConfig(): AiConfig | null {
   const row = db.select().from(tables.settings).where(eq(tables.settings.key, 'ai')).get()
   if (!row) return null
-  const v = row.value as unknown as Partial<AiConfig>
+  const v = decodeCfg(row.value as unknown as Partial<AiConfig> & Record<string, unknown>)
   if (!v.endpoint || !v.model) return null
   return { endpoint: v.endpoint, model: v.model, apiKey: v.apiKey || '' }
 }
@@ -30,11 +31,12 @@ export async function llmComplete(system: string, user: string): Promise<string>
 
 function saveAiConfig(cfg: AiConfig) {
   const now = Date.now()
+  const value = encodeCfg(cfg as unknown as Record<string, unknown>) as unknown as AiConfig
   const existing = db.select().from(tables.settings).where(eq(tables.settings.key, 'ai')).get()
   if (existing) {
-    db.update(tables.settings).set({ value: cfg as unknown as Record<string, unknown>, updatedAt: now }).where(eq(tables.settings.key, 'ai')).run()
+    db.update(tables.settings).set({ value: value as unknown as Record<string, unknown>, updatedAt: now }).where(eq(tables.settings.key, 'ai')).run()
   } else {
-    db.insert(tables.settings).values({ key: 'ai', value: cfg as unknown as Record<string, unknown>, updatedAt: now }).run()
+    db.insert(tables.settings).values({ key: 'ai', value: value as unknown as Record<string, unknown>, updatedAt: now }).run()
   }
 }
 

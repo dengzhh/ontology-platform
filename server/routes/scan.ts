@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm'
 import { db, tables } from '../db'
 import { requireAuth } from '../auth'
 import { resolveSpace, type SpaceInfo } from '../space'
+import { decodeCfg } from '../secretbox'
 import { llmComplete } from './ai'
 import { listTemplates, autoMatchTemplate, buildPrompt, applyMapping } from '../engine/scanTemplates'
 import type { SessionUser } from '../../shared/types'
@@ -19,8 +20,8 @@ interface VisionConfig { endpoint: string; apiKey: string; model: string }
 export function getVisionConfig(): VisionConfig | null {
   const ai = db.select().from(tables.settings).where(eq(tables.settings.key, 'ai')).get()
   const vision = db.select().from(tables.settings).where(eq(tables.settings.key, 'vision')).get()
-  const aiVal = (ai?.value ?? {}) as Record<string, unknown>
-  const vVal = (vision?.value ?? {}) as Record<string, unknown>
+  const aiVal = decodeCfg((ai?.value ?? {}) as Record<string, unknown>)
+  const vVal = decodeCfg((vision?.value ?? {}) as Record<string, unknown>)
   const endpoint = String(vVal.endpoint || aiVal.endpoint || '')
   const apiKey = String(vVal.apiKey || aiVal.apiKey || '')
   if (!endpoint || !apiKey) return null
@@ -413,7 +414,7 @@ scanRoutes.post('/recognize-text', async (c) => {
     //   ③ 否则                  → 与视觉模型共用端点 + textModel
     // 均失败再兜底平台 AI 网关
     const vcfg = getVisionConfig()
-    const vVal2 = (db.select().from(tables.settings).where(eq(tables.settings.key, 'vision')).get()?.value ?? {}) as Record<string, unknown>
+    const vVal2 = decodeCfg((db.select().from(tables.settings).where(eq(tables.settings.key, 'vision')).get()?.value ?? {}) as Record<string, unknown>)
     const textModel = String(vVal2.textModel ?? '').trim()
     const textEndpoint = String(vVal2.textEndpoint || vcfg?.endpoint || '')
     const textApiKey = String(vVal2.textApiKey || vcfg?.apiKey || '')

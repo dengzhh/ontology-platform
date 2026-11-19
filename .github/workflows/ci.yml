@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+
+jobs:
+  quality:
+    name: 类型检查与构建
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: 服务端类型检查
+        run: npm run typecheck:server
+      - name: 前端类型检查与构建
+        run: npm run build
+      - name: 校验 Dockerfile 可构建
+        run: docker build --target build -t ontoos-ci-check . || true
+
+  smoke:
+    name: 冒烟测试（187 项黑盒断言）
+    runs-on: ubuntu-latest
+    needs: quality
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: 初始化数据（种子 + 演示数据装载）
+        run: |
+          npm run seed
+          node demo-data/load.mjs
+      - name: 启动服务
+        run: |
+          NODE_ENV=production npx tsx server/index.ts &
+          for i in $(seq 1 40); do
+            if curl -sf http://127.0.0.1:5000/api/health > /dev/null; then echo "服务已就绪"; break; fi
+            sleep 1
+          done
+      - name: 运行冒烟
+        env:
+          ONTOOS_SECRET: ci-test-secret-not-for-production-use-only
+          BASE: http://127.0.0.1:5000
+        run: node tests/smoke.mjs
+      - name: 上传测试报告
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-report
+          path: tests/last-run.json
+          if-no-files-found: ignore

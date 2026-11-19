@@ -4,6 +4,7 @@ import { requireAuth, requireAdmin } from '../auth'
 import { db, tables } from '../db'
 import { resolveSpace } from '../space'
 import { getSmtpConfig, saveSmtpConfig, sendMail, isSmtpConfigured, type SmtpConfig } from '../mailer'
+import { decodeCfg, encodeCfg } from '../secretbox'
 import type { SessionUser } from '../../shared/types'
 
 function db_insertAudit(actor: string, action: string, target: string) {
@@ -66,11 +67,13 @@ adminRoutes.put('/smtp', requireAdmin, async (c) => {
   return c.json({ ok: true })
 })
 
-/** 嵌入模型配置（供知识检索语义向量化） */
+/** 嵌入模型配置（供知识检索语义向量化）；密钥加密存储，回显脱敏 */
 adminRoutes.get('/embedding', requireAdmin, (c) => {
   const row = db.select().from(tables.settings).where(eq(tables.settings.key, 'embedding')).get()
   if (!row) return c.json({ embedding: null })
-  return c.json({ embedding: row.value })
+  const v = { ...(row.value as Record<string, unknown>) }
+  if (v.apiKey) v.apiKey = '******'
+  return c.json({ embedding: v })
 })
 
 adminRoutes.put('/embedding', requireAdmin, async (c) => {
@@ -78,10 +81,16 @@ adminRoutes.put('/embedding', requireAdmin, async (c) => {
   if (!body.model?.trim()) return c.json({ error: '请填写嵌入模型名称' }, 400)
   const now = Date.now()
   const existing = db.select().from(tables.settings).where(eq(tables.settings.key, 'embedding')).get()
+  // 掩码/留空表示沿用原密钥（回显是脱敏值，直接回存会覆盖真实密钥）
+  if (!body.apiKey || body.apiKey === '******') {
+    const prev = existing?.value as { apiKey?: string } | undefined
+    if (prev?.apiKey) body.apiKey = prev.apiKey
+  }
+  const value = encodeCfg(body as unknown as Record<string, unknown>)
   if (existing) {
-    db.update(tables.settings).set({ value: body, updatedAt: now }).where(eq(tables.settings.key, 'embedding')).run()
+    db.update(tables.settings).set({ value, updatedAt: now }).where(eq(tables.settings.key, 'embedding')).run()
   } else {
-    db.insert(tables.settings).values({ key: 'embedding', value: body, updatedAt: now }).run()
+    db.insert(tables.settings).values({ key: 'embedding', value, updatedAt: now }).run()
   }
   db_insertAudit(c.get('user').name, '保存嵌入模型配置', `${body.model}@${body.endpoint || '(用AI网关)'}`)
   return c.json({ ok: true })
@@ -89,9 +98,9 @@ adminRoutes.put('/embedding', requireAdmin, async (c) => {
 
 adminRoutes.post('/embedding/test', requireAdmin, async (c) => {
   const ai = db.select().from(tables.settings).where(eq(tables.settings.key, 'ai')).get()
-  const aiVal = (ai?.value ?? {}) as { endpoint?: string; apiKey?: string }
+  const aiVal = decodeCfg((ai?.value ?? {}) as Record<string, unknown>) as { endpoint?: string; apiKey?: string }
   const emb = db.select().from(tables.settings).where(eq(tables.settings.key, 'embedding')).get()
-  const embVal = (emb?.value ?? {}) as { model?: string; endpoint?: string; apiKey?: string }
+  const embVal = decodeCfg((emb?.value ?? {}) as Record<string, unknown>) as { model?: string; endpoint?: string; apiKey?: string }
   const endpoint = (embVal.endpoint || aiVal.endpoint || '').replace(/\/$/, '').replace(/\/embeddings$/, '')
   const apiKey = embVal.apiKey || aiVal.apiKey || ''
   const model = embVal.model || 'text-embedding-3-small'
@@ -116,20 +125,27 @@ adminRoutes.post('/embedding/test', requireAdmin, async (c) => {
   }
 })
 
-/** 视觉模型配置（票据扫描识别） */
+/** 视觉模型配置（票据扫描识别）；密钥加密存储，回显脱敏 */
 adminRoutes.get('/vision', requireAdmin, (c) => {
   const row = db.select().from(tables.settings).where(eq(tables.settings.key, 'vision')).get()
-  return c.json({ configured: !!row, value: row?.value ?? null })
+  const v = { ...((row?.value ?? {}) as Record<string, unknown>) }
+  if (v.apiKey) v.apiKey = '******'
+  if (v.textApiKey) v.textApiKey = '******'
+  return c.json({ configured: !!row, value: v })
 })
 
 adminRoutes.put('/vision', requireAdmin, async (c) => {
   const body = await c.req.json<{ model: string; textModel?: string; endpoint?: string; apiKey?: string; textEndpoint?: string; textApiKey?: string }>()
   if (!body.model?.trim()) return c.json({ error: '请填写视觉模型名称' }, 400)
-  // 文本模型独立端点/密钥：允许仅填其一（端点独立、密钥沿用视觉的），存原值即可，读取端自行回退
   const now = Date.now()
   const existing = db.select().from(tables.settings).where(eq(tables.settings.key, 'vision')).get()
-  if (existing) db.update(tables.settings).set({ value: body, updatedAt: now }).where(eq(tables.settings.key, 'vision')).run()
-  else db.insert(tables.settings).values({ key: 'vision', value: body, updatedAt: now }).run()
+  // 掩码/留空表示沿用原密钥；文本模型独立端点/密钥：允许仅填其一（端点独立、密钥沿用视觉的），读取端自行回退
+  const prev = (existing?.value ?? {}) as { apiKey?: string; textApiKey?: string }
+  if ((!body.apiKey || body.apiKey === '******') && prev.apiKey) body.apiKey = prev.apiKey
+  if ((!body.textApiKey || body.textApiKey === '******') && prev.textApiKey) body.textApiKey = prev.textApiKey
+  const value = encodeCfg(body as unknown as Record<string, unknown>)
+  if (existing) db.update(tables.settings).set({ value, updatedAt: now }).where(eq(tables.settings.key, 'vision')).run()
+  else db.insert(tables.settings).values({ key: 'vision', value, updatedAt: now }).run()
   db_insertAudit(c.get('user').name, '保存视觉模型配置', body.model)
   return c.json({ ok: true })
 })

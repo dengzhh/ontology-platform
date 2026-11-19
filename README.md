@@ -100,21 +100,40 @@ node demo-data/load.mjs                 # 期望：通过 118/118
 装载后按 `demo-data/FEATURE-MATRIX.md` 的 42 页验证矩阵逐页体验。清理验证数据：`node demo-data/load.mjs --clean`。
 
 <details>
-<summary><b>生产构建与常用脚本</b></summary>
+<summary><b>生产部署与常用脚本</b></summary>
+
+**生产部署（单端口：API + 前端静态同进程）**
 
 ```bash
-npm run build             # 前端类型检查 + 产物构建（dist/）
-npm run typecheck:server  # 服务端类型检查
-npm run preview           # 本地预览构建产物
-node tests/smoke.mjs      # 全站 API 黑盒冒烟（187 项断言，零依赖）
-node demo-data/stress.mjs # 10 万行压力基准（灌入 726ms / 列表 0.3ms，自动清理）
+npm ci && npm run build
+export ONTOOS_SECRET="$(openssl rand -base64 32)"   # 密钥加密主密钥，必须备份保管
+export NODE_ENV=production
+npm run start             # http://localhost:5000（前端与管理端同端口）
+
+# 或 Docker
+docker compose up -d --build
+docker compose exec ontoos npx tsx server/seed.ts
 ```
+
+**备份与恢复（VACUUM INTO 在线快照，不必停服）**
+
+```bash
+npm run backup            # 备份 + integrity_check 校验，保留最近 14 份
+npm run backup:list       # 列出备份
+npm run restore -- data/backups/ontoos-YYYYMMDD-HHmmss.db   # 恢复（需先停服）
+```
+
+详见 [部署手册](./docs/DEPLOYMENT.md)（含反向代理、systemd、安全上线检查清单、数据处理与合规说明）。
 
 | 脚本 | 说明 |
 |---|---|
-| `npm run dev` | 同时启动前端(vite)与 API(tsx watch) |
+| `npm run dev` | 开发：前端(vite) + API(tsx watch) 双进程热更新 |
+| `npm run start` | 生产：单进程托管 API 与前端产物 |
+| `npm run build` | 前端类型检查 + 产物构建（dist/） |
+| `npm run typecheck:server` | 服务端类型检查 |
+| `npm run backup` | 在线备份 + 完整性校验 |
+| `npm run smoke` | 全站 API 黑盒冒烟（187 项断言，零依赖） |
 | `npm run db:migrate` | 幂等建表 + 空间地基回填 |
-| `npm run db:generate` | drizzle-kit 生成迁移 |
 | `npm run seed` | 重置并写入演示数据 |
 
 </details>
@@ -209,6 +228,7 @@ tests/ · demo-data/            # 冒烟/契约/清单/E2E 剧本/扫描素材 �
 ## 路线图
 
 - ✅ **v1.0.0（当前）**：42 应用全 live；智能助手 22 工具 + ChatBI（趋势/环比同比/TOP-N/交叉/主动澄清）；语义层；多空间；外部数据源；10 万行级性能验证
+- ✅ **v1.1.0 生产就绪**：单端口生产部署（Docker / systemd）· 备份与恢复演练 · 登录防爆破 + 分级限流 · 密钥静态加密（AES-256-GCM）· 安全响应头/CSP/HSTS · 结构化日志与前端异常上报 · GitHub Actions CI
 - 🔜 计划中：PostgreSQL/pgvector 适配 · OIDC/SSO · 流式时序采集 · 更多数据连接器（PG/MySQL/Kafka）· 查询管道实时掩码 · 对象存储 V2
 
 ## 说明
@@ -217,7 +237,9 @@ tests/ · demo-data/            # 冒烟/契约/清单/E2E 剧本/扫描素材 �
 - 所有文案为简体中文；开发规范见 [CONVENTIONS.md](./CONVENTIONS.md)
 - **完整技术文档**：[docs/TECHNICAL-GUIDE.md](./docs/TECHNICAL-GUIDE.md) —— 42 个模块逐个说明「功能 / 实现原理 / 能力边界 / 验证方式」，含 29 张真实截图、架构分层、横切能力与边界总表
 - **项目状态报告**：[docs/PROJECT-STATUS.md](./docs/PROJECT-STATUS.md) —— 完成度评估、分域评分、遗漏任务清单与下一步路线图
-- 本项目单进程零运维设计，适合本地部署、私有化演示与二次开发
+- **部署手册**：[docs/DEPLOYMENT.md](./docs/DEPLOYMENT.md) —— Docker/systemd 部署、备份恢复演练、安全上线检查清单、数据处理与合规说明
+- **用户手册**：[docs/USER-GUIDE.md](./docs/USER-GUIDE.md) —— 面向业务使用者的上手路径、日常工作流与常见问题
+- 本项目单进程零运维设计，适合本地部署、私有化交付与二次开发
 
 <div align="center">
 

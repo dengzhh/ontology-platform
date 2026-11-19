@@ -1,4 +1,5 @@
 import { Hono } from 'hono'
+import { randomBytes } from 'node:crypto'
 import { eq } from 'drizzle-orm'
 import { db, tables } from '../db'
 import { callVision, getVisionConfig, parseJsonLoose, commitScanObject, findItemTypeId, pivotArrayFields } from './scan'
@@ -70,6 +71,8 @@ scanSessionRoutes.post('/:id/upload', async (c) => {
 
   const body = await c.req.json<{ image: string }>()
   if (!body.image) return c.json({ error: '缺少图片数据' }, 400)
+  // 免登录端点：限制单图体积（base64 后 ~12MB 上限，前端已压缩，超限多为异常调用）
+  if (body.image.length > 12_000_000) return c.json({ error: '图片过大，请重新拍摄' }, 413)
   // 视觉网关仅收 JPEG/PNG：非 JPEG/PNG 前缀（webp/heic 等）直接给出可操作提示，不落库不调模型
   if (!/^data:image\/(jpe?g|png)/i.test(body.image)) {
     return c.json({ error: '仅支持 JPG/JPEG/PNG 格式图片（当前为 ' + (String(body.image).slice(0, 24) || '未知格式') + '…）。请在手机「相机 → 格式」选择兼容模式后重拍' }, 400)
@@ -176,7 +179,8 @@ scanSessionRoutes.post('/create', async (c) => {
   const user = await loadSessionUser(c)
   if (!user) return c.json({ error: '未登录' }, 401)
   const { spaceId, typeId } = await c.req.json<{ spaceId: string; typeId: string }>()
-  const id = `SS-${Date.now().toString(36).toUpperCase()}`
+  // 随机 96 位会话令牌：该 ID 可免登录上传/入库，必须不可从时间戳预测
+  const id = `SS-${randomBytes(12).toString('base64url').toUpperCase()}`
   const now = Date.now()
   db.insert(tables.scanSessions).values({
     id, spaceId, typeId, ownerId: user.id,
