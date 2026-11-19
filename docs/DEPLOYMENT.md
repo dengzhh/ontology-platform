@@ -62,6 +62,8 @@ docker compose exec ontoos npx tsx server/seed.ts
 docker compose exec ontoos node demo-data/load.mjs
 ```
 
+> 镜像已预编译服务端为 CommonJS（`dist-server/`），**运行时不依赖 tsx**；`tsx` 仅保留给 seed/migrate/backup 等运维脚本，已列为生产依赖。
+
 ### 4. 升级
 
 ```bash
@@ -78,10 +80,14 @@ docker compose up -d --build
 ```bash
 npm ci
 npm run build                                  # 前端产物 → dist/
+npm run build:server                           # 服务端 → dist-server/（CommonJS）
 export ONTOOS_SECRET="$(openssl rand -base64 32)"
+export ONTOOS_JWT_SECRET="$(openssl rand -base64 32)"
 export NODE_ENV=production
-npm run start                                  # 生产模式（tsx 直跑 TS）
+npm start                                      # node dist-server/server/index.js（不依赖 tsx）
 ```
+
+> 也可用 `npm run build:all` 一次完成前后端构建；`npm run start:tsx` 保留为「直接跑 TS 源码」的应急方式（需开发依赖）。
 
 启用进程守护（推荐 systemd）：
 
@@ -98,7 +104,8 @@ WorkingDirectory=/opt/ontology-platform
 Environment=NODE_ENV=production
 Environment=PORT=5000
 EnvironmentFile=/opt/ontology-platform/.env
-ExecStart=/usr/bin/npx tsx server/index.ts
+ExecStart=/usr/bin/node dist-server/server/index.js
+# 构建：npm run build:all（部署/升级时执行）
 Restart=always
 RestartSec=5
 
@@ -275,6 +282,8 @@ systemctl start ontoos
 | 手机扫码打不开 | 手机与服务器需同网络；URL 中的主机名必须是局域网 IP，非 `localhost` |
 | 数据库被锁 `SQLITE_BUSY` | 有第二个进程打开了同一个 `ontoos.db`；确保只运行一个服务实例 |
 | 备份文件很小/校验失败 | 检查磁盘空间；`--verify` 会做 `integrity_check` |
+| 启动报 `Cannot find module 'dist-server/...'` | 未执行服务端编译：`npm run build:server` |
+| 启动报 `npx tsx: not found` | 旧版启动命令；请用 `npm start`（已改为纯 node 运行编译产物） |
 
 日志位置：Docker `docker compose logs ontoos`；裸机 systemd `journalctl -u ontoos -f`。
 

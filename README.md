@@ -105,11 +105,11 @@ node demo-data/load.mjs                 # 期望：通过 118/118
 **生产部署（单端口：API + 前端静态同进程）**
 
 ```bash
-npm ci && npm run build
+npm ci && npm run build:all   # 前端 → dist/，服务端 → dist-server/（CommonJS）
 export ONTOOS_SECRET="$(openssl rand -base64 32)"       # 密钥加密主密钥，必须备份保管
 export ONTOOS_JWT_SECRET="$(openssl rand -base64 32)"   # 登录令牌签名密钥，生产必填
 export NODE_ENV=production
-npm run start             # http://localhost:5000（前端与管理端同端口）
+npm run start             # 纯 node 运行，不依赖 tsx：http://localhost:5000
 
 # 或 Docker
 docker compose up -d --build
@@ -131,6 +131,8 @@ npm run restore -- data/backups/ontoos-YYYYMMDD-HHmmss.db   # 恢复（需先停
 | `npm run dev` | 开发：前端(vite) + API(tsx watch) 双进程热更新 |
 | `npm run start` | 生产：单进程托管 API 与前端产物 |
 | `npm run build` | 前端类型检查 + 产物构建（dist/） |
+| `npm run build:server` | 服务端编译为 CommonJS（dist-server/，生产启动用） |
+| `npm run build:all` | 前后端一次性构建 |
 | `npm run typecheck:server` | 服务端类型检查 |
 | `npm run backup` | 在线备份 + 完整性校验 |
 | `npm run smoke` | 全站 API 黑盒冒烟（204 项断言，零依赖） |

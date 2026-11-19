@@ -22,8 +22,16 @@ jobs:
         run: npm run typecheck:server
       - name: 前端类型检查与构建
         run: npm run build
-      - name: 校验 Dockerfile 可构建
-        run: docker build --target build -t ontoos-ci-check . || true
+      - name: 服务端编译（生产运行产物）
+        run: npm run build:server
+      - name: 校验生产启动产物（纯 node，无 tsx 运行时）
+        run: |
+          PORT=5055 NODE_ENV=production node dist-server/server/index.js &
+          for i in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:5055/api/health > /dev/null; then echo "生产产物启动成功"; exit 0; fi
+            sleep 1
+          done
+          echo "生产产物启动失败"; exit 1
 
   smoke:
     name: 冒烟测试（187 项黑盒断言）
@@ -46,7 +54,8 @@ jobs:
           ONTOOS_SECRET: ci-test-secretbox-not-for-production
           ONTOOS_JWT_SECRET: ci-test-jwt-secret-not-for-production-use
         run: |
-          npx tsx server/index.ts &
+          npm run build:server
+          node dist-server/server/index.js &
           for i in $(seq 1 40); do
             if curl -sf http://127.0.0.1:5000/api/health > /dev/null; then echo "服务已就绪"; break; fi
             sleep 1
