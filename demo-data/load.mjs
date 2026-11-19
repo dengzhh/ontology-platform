@@ -87,7 +87,11 @@ async function api(method, url, body, space = ORG, expect = 200) {
     return { ok: r.status === expect, status: r.status, data: j }
   } catch (e) { return { ok: false, status: 0, data: { error: e.message } } }
 }
-function ok(label, r, extra = '') { summary.push({ label, ok: r.ok, detail: r.ok ? extra : `HTTP ${r.status} ${JSON.stringify(r.data).slice(0, 120)}` }) }
+function ok(label, r, extra = '') {
+  // data 可能为 undefined（空响应体）——不能直接 JSON.stringify(...).slice()，否则掩盖真实错误
+  const detail = r.ok ? extra : `HTTP ${r.status} ${String(JSON.stringify(r.data ?? '')).slice(0, 120)}`
+  summary.push({ label, ok: r.ok, detail })
+}
 function raw(sql, ...args) { return db.prepare(sql).all(...args) }
 function run(sql, ...args) { return db.prepare(sql).run(...args) }
 
@@ -266,6 +270,17 @@ cleanData()
   if (!r.data?.token) { console.error('登录失败：', r.data); db.close(); process.exit(1) }
   token = r.data.token
   console.log(`登录成功：${r.data.user?.name} / 默认空间 ${ORG}`)
+}
+
+/* ---------------- 0.1 确保个人空间存在并安装生活模板包 ----------------
+ * 个人空间由「首次访问」按需创建（POST /spaces/ensure-personal），
+ * 且对象类型按空间隔离——必须装 personal-life 模板包才有 expense 等类型，
+ * 否则个人消费数据与扫描明细全部写入失败（全新部署必现）。 */
+{
+  const r = await api('POST', '/api/spaces/ensure-personal', {}, PERSONAL, 200)
+  ok('个人空间·就绪', r, r.data?.space?.id ?? '')
+  const pack = await api('POST', `/api/spaces/${PERSONAL}/install-template`, { packId: 'personal-life' }, PERSONAL, 200)
+  ok('个人空间·生活模板包（支出/收入/账户等类型）', pack, `created=${pack.data?.created ?? 0}`)
 }
 
 /* ---------------- 1. 本体建模（对象/链接/动作/函数/接口/术语） ---------------- */
@@ -733,15 +748,14 @@ cleanData()
   }
 }
 
-/* ---------------- 10. 扫描素材（复制一份到 files/ 便于上传） ---------------- */
+/* ---------------- 10. 扫描素材（确保 files/ 有可上传的示例小票） ---------------- */
 {
   const src = path.join(ROOT, 'tests', 'fixtures', 'images', '01-receipt-convenience.png')
   const dst = path.join(ROOT, 'demo-data', 'files', 'receipt-demo.png')
-  if (fs.existsSync(src)) {
-    fs.copyFileSync(src, dst)
-    const copied = fs.existsSync(dst) && fs.statSync(dst).size > 0
-    ok('扫描素材·示例小票', { ok: copied, status: copied ? 200 : 0, data: {} }, copied ? `已复制 ${fs.statSync(dst).size} 字节` : '复制失败')
-  } else ok('扫描素材·示例小票', { ok: false, status: 0, data: {} })
+  // 镜像内已自带 receipt-demo.png（tests/fixtures 未打进镜像），存在即视为就绪
+  const ready = (fs.existsSync(dst) && fs.statSync(dst).size > 0) || (fs.existsSync(src) && (fs.copyFileSync(src, dst), true))
+  ok('扫描素材·示例小票', { ok: ready, status: ready ? 200 : 0, data: {} },
+    ready ? `${fs.statSync(dst).size} 字节` : '缺少示例小票（tests/fixtures 或 demo-data/files 均无）')
 }
 
 /* ---------------- 11. 本体函数可执行化（模块1） ---------------- */

@@ -1,0 +1,42 @@
+# 本地验证专用 Dockerfile（中国大陆网络受限环境）
+# 基于本地已有 debian:12-slim + 国内 apt/npm/node 镜像，避免拉取 Docker Hub 大镜像。
+# 生产部署请使用仓库根目录的标准 Dockerfile。
+FROM debian:12.12-slim
+
+ARG NODE_VERSION=22.22.2
+ENV DEBIAN_FRONTEND=noninteractive
+
+# 第一步：先用 HTTP 源装 ca-certificates（容器初始无根证书，HTTPS 源会校验失败）
+# 注意：Debian 12 默认使用 /etc/apt/sources.list.d/debian.sources（deb822），
+# 必须覆盖该文件，仅改 /etc/apt/sources.list 不生效。
+RUN set -eux; \
+    rm -f /etc/apt/sources.list /etc/apt/sources.list.d/*; \
+    printf 'Types: deb\nURIs: http://mirrors.tuna.tsinghua.edu.cn/debian\nSuites: bookworm bookworm-updates\nComponents: main contrib non-free non-free-firmware\nSigned-By: /usr/share/keyrings/debian-archive-keyring.gpg\n\nTypes: deb\nURIs: http://mirrors.tuna.tsinghua.edu.cn/debian-security\nSuites: bookworm-security\nComponents: main contrib non-free non-free-firmware\nSigned-By: /usr/share/keyrings/debian-archive-keyring.gpg\n' > /etc/apt/sources.list.d/debian.sources; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends ca-certificates curl xz-utils python3 make g++ procps; \
+    rm -rf /var/lib/apt/lists/*; \
+    curl -fsSL "https://mirrors.tuna.tsinghua.edu.cn/nodejs-release/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-x64.tar.xz" -o /tmp/node.tar.xz; \
+    tar -xJf /tmp/node.tar.xz -C /usr/local --strip-components=1; \
+    rm /tmp/node.tar.xz; \
+    node -v; npm -v
+
+WORKDIR /app
+COPY package.json package-lock.json ./
+# npm registry 走国内镜像；node-gyp 通过环境变量覆盖头文件下载源
+# （新版 npm 已移除 disturl 配置项，只能用 npm_config_disturl / NODEJS_ORG_MIRROR）
+ENV npm_config_registry=https://registry.npmmirror.com \
+    npm_config_disturl=https://mirrors.tuna.tsinghua.edu.cn/nodejs-release \
+    NODEJS_ORG_MIRROR=https://mirrors.tuna.tsinghua.edu.cn/nodejs-release
+RUN npm ci
+
+COPY . .
+RUN npm run build && npm run build:server && npm run typecheck:server
+
+ENV NODE_ENV=production
+RUN npm prune --omit=dev
+
+RUN mkdir -p /app/data/backups
+EXPOSE 5000
+HEALTHCHECK --interval=30s --timeout=5s --start-period=25s --retries=3 \
+  CMD node -e "fetch('http://127.0.0.1:5000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+CMD ["node", "dist-server/server/index.js"]

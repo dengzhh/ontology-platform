@@ -37,6 +37,7 @@ import { apolloRoutes } from './routes/apollo'
 import { securityHeaders, ipRateLimit } from './security'
 import { assertJwtSecret } from './auth'
 import { migrateSecrets } from './migrateSecrets'
+import { ensureMigrated } from './migrate'
 import { sqlite } from './db'
 
 // 加载本地环境变量（.env.local / .env）：主密钥与部署参数
@@ -59,6 +60,9 @@ if (isProd && !process.env.ONTOOS_SECRET) {
 }
 // JWT 签名密钥同理：默认值公开在仓库中，缺失可被任意伪造身份
 assertJwtSecret(isProd)
+
+// 幂等迁移：新部署首次启动自动建表（否则下面 migrateSecrets 查询 settings 会报 no such table）
+ensureMigrated()
 
 // 历史明文密钥一次性加密（幂等）
 migrateSecrets()

@@ -26,7 +26,7 @@ function wipe() {
 }
 
 function seedIdentity() {
-  db.insert(tables.spaces).values({ id: 'sp-org-default', name: '星辰智造集团', kind: 'org', ownerId: 'U-0001', templatePack: 'manufacturing-demo', createdAt: now }).run()
+  // 插入顺序必须满足外键：roles → users → spaces（owner_id 指向 users） → space_members
   for (const r of ROLES) {
     db.insert(tables.roles).values({
       id: r.id, name: r.name, desc: r.desc,
@@ -41,6 +41,7 @@ function seedIdentity() {
       lastLoginAt: u.lastLogin, createdAt: now,
     }).run()
   }
+  db.insert(tables.spaces).values({ id: 'sp-org-default', name: '星辰智造集团', kind: 'org', ownerId: 'U-0001', templatePack: 'manufacturing-demo', createdAt: now }).run()
   for (const u of USERS) {
     db.insert(tables.spaceMembers).values({ spaceId: 'sp-org-default', userId: u.id, role: u.account === 'chen.xingye' ? 'owner' : 'member' }).run()
   }

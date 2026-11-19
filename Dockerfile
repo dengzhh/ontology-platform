@@ -23,6 +23,8 @@ COPY --from=build /app/dist ./dist
 COPY --from=build /app/dist-server ./dist-server
 COPY server ./server
 COPY shared ./shared
+# 迁移文件：启动时 ensureMigrated() 读取 ./drizzle 建表（缺此项新库无法启动）
+COPY drizzle ./drizzle
 # 初始化数据所需：装载脚本与演示素材（部署后执行 seed/load 用）
 COPY demo-data ./demo-data
 

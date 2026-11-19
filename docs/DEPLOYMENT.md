@@ -54,15 +54,24 @@ docker compose logs -f ontoos    # 观察启动日志
 curl http://localhost:5000/api/health
 ```
 
-首次启动数据库为空，需要初始化种子数据：
+**首次部署必须初始化数据**（容器启动已自动建表，但账号与空间需 seed 创建）：
 
 ```bash
+# 1) 必需：创建角色、管理员账号与默认组织空间
 docker compose exec ontoos npx tsx server/seed.ts
-# 可选：装载演示业务数据
+
+# 2) 可选：装载全功能验证数据（120 项断言，含个人空间与生活模板包）
 docker compose exec ontoos node demo-data/load.mjs
 ```
 
-> 镜像已预编译服务端为 CommonJS（`dist-server/`），**运行时不依赖 tsx**；`tsx` 仅保留给 seed/migrate/backup 等运维脚本，已列为生产依赖。
+初始化后默认账号：`chen.xingye / ontos@2026`（**首次登录后立即改密**）。
+
+> **启动时序说明**：容器启动时自动执行幂等迁移（`ensureMigrated()`）建立全部表结构；
+> 空库阶段会跳过「空间地基回填」（`spaces.owner_id` 外键依赖 `users`），
+> 由 `npm run seed` 创建账号与空间后补齐。因此**全新部署不要跳过 seed**。
+>
+> 镜像已预编译服务端为 CommonJS（`dist-server/`），**运行时不依赖 tsx**；
+> `tsx` 仅保留给 seed/migrate/backup 等运维脚本，已列为生产依赖。
 
 ### 4. 升级
 
@@ -391,3 +400,56 @@ curl -X PUT http://localhost:5000/api/admin/signup \
 见 [PG-MIGRATION.md](./PG-MIGRATION.md)：含迁移触发条件、工作量评估（8–15 人日）、已就绪的导出桥（`npx tsx server/exportData.ts`）、五阶段操作步骤与回归清单。
 
 **结论**：单机部署下 SQLite 已足够；出现「多实例部署」或「并发写瓶颈」时再迁移。
+
+---
+
+## 十二、中国大陆网络环境构建
+
+标准 `Dockerfile` 从 Docker Hub 拉取 `node:22-bookworm-slim` 并访问 deb.debian.org / registry.npmjs.org。在国内网络下实测极慢（基础镜像 5 分钟仅下载数 MB），甚至因 node-gyp 下载 Node 头文件超时而**编译失败**。
+
+仓库提供 **`Dockerfile.local-test`**：基于 `debian:12-slim` + 清华 apt 源 + 清华 Node 二进制 + npmmirror，实测 **约 3 分钟完成镜像构建**。
+
+```bash
+docker build -f Dockerfile.local-test -t ontoos-platform:latest .
+```
+
+关键配置（如自建构建环境可复用）：
+
+| 用途 | 配置 |
+|---|---|
+| apt 源 | 覆盖 `/etc/apt/sources.list.d/debian.sources`（Debian 12 为 deb822 格式，改 `sources.list` 无效） |
+| Node 二进制 | `https://mirrors.tuna.tsinghua.edu.cn/nodejs-release/v22.22.2/...` |
+| npm registry | `npm_config_registry=https://registry.npmmirror.com` |
+| node-gyp 头文件 | `npm_config_disturl` + `NODEJS_ORG_MIRROR` 指向清华（新版 npm 已移除 `disturl` 配置项，只能用环境变量） |
+
+> 注：`Dockerfile.local-test` 与标准 `Dockerfile` 构建产物等价，仅镜像来源不同；
+> 生产交付建议在具备正常网络的环境用标准 `Dockerfile`，或预置镜像仓库。
+
+---
+
+## 十三、容器化部署实测记录
+
+以下为本项目在 Docker 环境（Docker 29.4 / Compose v5.1）的完整验证结果，可作为部署验收基线：
+
+| 环节 | 命令 | 结果 |
+|---|---|---|
+| 镜像构建 | `docker build -f Dockerfile.local-test -t ontoos-platform .` | ✅ 成功（约 3 分钟） |
+| 空库启动 | `docker run ... -v ontoos-data:/app/data` | ✅ 自动建表，日志提示「空库，跳过空间地基；请执行 seed」，健康状态 `healthy` |
+| 健康检查 | `curl /api/health` | ✅ 200 |
+| 前端托管 | `curl /` | ✅ 200（SPA 与 API 同端口） |
+| 数据初始化 | `docker exec ... npx tsx server/seed.ts` | ✅ 角色/账号/组织空间 |
+| 演示数据装载 | `docker exec ... node demo-data/load.mjs` | ✅ **120/120**（含个人空间 + 生活模板包 + 扫描明细） |
+| 全站冒烟 | `docker exec -e BASE=http://127.0.0.1:5000 ... node smoke.mjs` | ✅ **140/140**（容器内基线） |
+| 备份脚本 | `docker exec ... npx tsx server/backup.ts --verify` | ✅ 可用（tsx 在生产依赖中） |
+
+> 冒烟在本机完整基线为 204 项（多出的项依赖外部 AI 网关与本地测试数据），
+> 容器内基线为 140 项（不含需外部 LLM 的用例）。两者均为 0 失败。
+
+**实测中发现并修复的部署缺陷**（均已修复，记录备查）：
+
+1. 运行阶段用 `npx tsx` 启动但 tsx 在 devDependencies → 镜像起不来（改为预编译 CJS + `node` 启动）
+2. `migrate.ts` 顶层副作用：import 即执行空间回填，空库时报 `no such table`（改为 `ensureMigrated()` 显式调用）
+3. `seed.ts` 插入顺序违反外键：`spaces` 早于 `users`（修正为 roles → users → spaces → members）
+4. 新库启动缺少迁移文件（`drizzle/` 未 COPY 进镜像）
+5. 装载脚本假定个人空间与生活模板包已存在 → 全新库 4 项失败（脚本内先创建并安装模板）
+6. 装载脚本 `JSON.stringify(r.data).slice()` 在 data 为 undefined 时崩溃，掩盖真实错误（加空值保护）
