@@ -5,6 +5,7 @@ import type Database from 'better-sqlite3'
 import { requireAuth } from '../auth'
 import { resolveSpace, spacePerm, spaceCanModel, type SpaceInfo } from '../space'
 import { fireObjectEvent } from '../engine/automation'
+import { checkQuota } from '../quota'
 import { TYPE_ALIASES } from '../../shared/ai-tools'
 import type { SessionUser } from '../../shared/types'
 
@@ -314,6 +315,9 @@ objectRoutes.post('/', async (c) => {
 
   const checked = validateValues(t.properties as PropDef[], body.values ?? {})
   if (!checked.ok) return c.json({ error: checked.error }, 400)
+  // 套餐配额：对象条数超限返回 402（私有化默认无限套餐不触发）
+  const quota = checkQuota(space.id, 'objects')
+  if (!quota.ok) return c.json({ error: quota.reason, code: 'QUOTA_EXCEEDED', quota: { used: quota.used, limit: quota.limit } }, 402)
 
   const id = `${t.id}:${Date.now().toString(36)}${Math.floor(Math.random() * 100).toString(36)}`
   const now = Date.now()

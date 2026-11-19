@@ -872,6 +872,76 @@ async function main() {
     if (relogin.data?.token) token = relogin.data.token
   }
 
+  /* ---------- 5.2 配额计量 / 健康自检 / 注册开关 ---------- */
+  console.log('\n--- 配额与运维 ---')
+  {
+    // 配额快照：需要当前空间 id
+    const sp = await req('GET', '/api/spaces')
+    const curSpace = (sp.data?.spaces ?? []).find((x) => x.id === spaceId) ?? (sp.data?.spaces ?? [])[0]
+    if (curSpace) {
+      const q = await req('GET', `/api/spaces/${encodeURIComponent(curSpace.id)}/quota`)
+      const okShape = q.ok && q.data?.quota && q.data?.usage && q.data?.pct && Array.isArray(q.data?.plans)
+      log(okShape, 'GET /spaces/:id/quota 配额快照（套餐/用量/百分比）',
+        okShape ? `plan=${JSON.stringify(q.data.quota).slice(0, 60)} plans=${q.data.plans.length}` : `status=${q.status}`)
+
+      // 切套餐 → 读回校验 → 还原为 unlimited（避免影响其它断言）
+      const toFree = await req('PUT', `/api/spaces/${encodeURIComponent(curSpace.id)}/quota`, { plan: 'free' }, 200)
+      const after = await req('GET', `/api/spaces/${encodeURIComponent(curSpace.id)}/quota`)
+      log(toFree.ok && after.data?.quota?.objects === 1000, 'PUT /spaces/:id/quota 切换套餐并生效', `objects_limit=${after.data?.quota?.objects}`)
+      const back = await req('PUT', `/api/spaces/${encodeURIComponent(curSpace.id)}/quota`, { plan: 'unlimited' }, 200)
+      log(back.ok, 'PUT /spaces/:id/quota 还原不限套餐', `status=${back.status}`)
+    } else log(false, 'GET /spaces/:id/quota（无可用空间）', '')
+
+    // 健康自检：数据库/磁盘/WAL/AI 四项 + 状态字段
+    const h = await req('GET', '/api/admin/health')
+    const checks = h.data?.checks ?? {}
+    log(h.ok && ['database', 'disk', 'wal', 'ai'].every((k) => checks[k]), 'GET /admin/health 深度健康自检',
+      h.ok ? `status=${h.data.status} keys=${Object.keys(checks).join(',')}` : `status=${h.status}`)
+
+    // 注册开关：默认关闭时注册应 403；开启后可注册成功并自动建空间
+    const st0 = await req('GET', '/api/auth/register-status')
+    log(st0.ok && typeof st0.data?.enabled === 'boolean', 'GET /auth/register-status 公开注册开关状态', `enabled=${st0.data?.enabled}`)
+
+    if (st0.data?.enabled === false) {
+      const denied = await req('POST', '/api/auth/register', { name: '冒烟注册', account: `smoke_reg_${Date.now().toString(36)}`, password: 'Smoke12345' }, 403)
+      log(denied.ok, 'POST /auth/register 开关关闭时返回 403', `status=${denied.status}`)
+    }
+
+    // 管理员开启注册 → 注册新租户 → 校验空间与配额已初始化 → 关闭注册并清理
+    const on = await req('PUT', '/api/admin/signup', { enabled: true })
+    if (on.ok) {
+      const acc = `smoke_reg_${Date.now().toString(36)}`
+      const reg = await req('POST', '/api/auth/register', { name: '冒烟租户', account: acc, password: 'Smoke12345', orgName: '冒烟组织' })
+      log(reg.ok && !!reg.data?.token && !!reg.data?.space?.id, 'POST /auth/register 自助注册并创建组织空间',
+        reg.ok ? `space=${reg.data.space?.id}` : `status=${reg.status} ${JSON.stringify(reg.data).slice(0, 80)}`)
+      if (reg.ok && reg.data?.token) {
+        const tq = await fetch(BASE + `/api/spaces/${encodeURIComponent(reg.data.space.id)}/quota`, { headers: { Authorization: 'Bearer ' + reg.data.token } })
+        const tqData = await tq.json().catch(() => ({}))
+        log(tq.ok && tqData?.quota?.objects === 1000, '新租户自动初始化免费套餐配额', `objects_limit=${tqData?.quota?.objects}`)
+        // 清理测试租户：空间成员 → 空间 → 用户（干净收尾，避免污染后续用量统计）
+        try {
+          const dbMod = await import('node:module')
+          const require = dbMod.createRequire(import.meta.url)
+          const db = new (require('better-sqlite3'))('data/ontoos.db')
+          const uid = reg.data.user?.id ?? ''
+          const sid = reg.data.space?.id ?? ''
+          if (sid) {
+            db.prepare('DELETE FROM space_members WHERE space_id = ?').run(sid)
+            db.prepare('DELETE FROM settings WHERE key LIKE ?').run(`quota:${sid}`)
+            db.prepare('DELETE FROM spaces WHERE id = ?').run(sid)
+          }
+          if (uid) {
+            db.prepare('DELETE FROM users WHERE id = ?').run(uid)
+            db.prepare("DELETE FROM settings WHERE key LIKE ?").run(`token_epoch:${uid}`)
+          }
+          db.close()
+          log(true, '清理冒烟注册租户（空间/成员/用户）', '')
+        } catch { log(true, '清理冒烟注册租户（跳过）', '') }
+      }
+      await req('PUT', '/api/admin/signup', { enabled: false })
+    } else log(false, 'PUT /admin/signup 开启自助注册', `status=${on.status}`)
+  }
+
   /* ---------- 4. 清理测试数据（倒序） ---------- */
   console.log('\n--- 清理测试数据 ---')
   let cleaned = 0

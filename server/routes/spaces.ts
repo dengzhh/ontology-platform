@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { db, tables } from '../db'
 import { requireAuth } from '../auth'
 import { listUserSpaces, ensurePersonalSpace, isMember } from '../space'
+import { checkQuota, quotaReport, setQuota, PLANS, selfSignupEnabled, setSelfSignup } from '../quota'
 import { PACKS } from '../templates/packs'
 import type { SessionUser } from '../../shared/types'
 
@@ -80,6 +81,9 @@ spaceRoutes.post('/:id/members', async (c) => {
   const target = db.select().from(tables.users).all().find((u) => u.account === account)
   if (!target) return c.json({ error: `平台用户「${account}」不存在，请先邀请其注册` }, 404)
   if (isMember(id, target.id)) return c.json({ error: '已是成员' }, 409)
+  // 套餐配额：成员数超限返回 402
+  const memberQuota = checkQuota(id, 'members')
+  if (!memberQuota.ok) return c.json({ error: memberQuota.reason, code: 'QUOTA_EXCEEDED', quota: { used: memberQuota.used, limit: memberQuota.limit } }, 402)
   db.insert(tables.spaceMembers).values({ spaceId: id, userId: target.id, role: 'member' }).run()
   audit(user, '添加空间成员', `${sp.name} ← ${target.name}`)
   return c.json({ ok: true, member: { name: target.name, account: target.account } })
@@ -245,4 +249,28 @@ spaceRoutes.post('/import', async (c) => {
     space: { id: spaceId, name, kind },
     counts: { types: b.objectTypes.length, links: b.linkTypes.length, objects: (b.objects ?? []).length, objectLinks: (b.objectLinks ?? []).length },
   })
+})
+
+/* ============ 配额与计量（SaaS / 容量管理） ============ */
+
+/** 空间配额快照：套餐、用量、百分比（成员可看，用于展示容量告警） */
+spaceRoutes.get('/:id/quota', async (c) => {
+  const user = c.get('user')
+  const id = c.req.param('id') as string
+  if (!isMember(id, user.id) && user.role.id !== 'admin') return c.json({ error: '无权访问该空间' }, 403)
+  return c.json({ ...quotaReport(id), plans: Object.keys(PLANS) })
+})
+
+/** 调整空间套餐（仅空间 owner 或管理员） */
+spaceRoutes.put('/:id/quota', async (c) => {
+  const user = c.get('user')
+  const id = c.req.param('id') as string
+  const sp = db.select().from(tables.spaces).all().find((s) => s.id === id)
+  if (!sp) return c.json({ error: '空间不存在' }, 404)
+  if (sp.ownerId !== user.id && user.role.id !== 'admin') return c.json({ error: '仅空间创建者或管理员可调整套餐' }, 403)
+  const body = await c.req.json<{ plan: keyof typeof PLANS; override?: Partial<typeof PLANS.free> }>()
+  if (!body.plan || !(body.plan in PLANS)) return c.json({ error: `未知套餐，可选：${Object.keys(PLANS).join(' / ')}` }, 400)
+  setQuota(id, body.plan, body.override)
+  audit(user, '调整空间套餐', `${sp.name} → ${body.plan}`)
+  return c.json({ ok: true, ...quotaReport(id) })
 })

@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm'
 import { db, tables } from '../db'
 import { requireAuth, requireAdmin } from '../auth'
 import { decodeCfg, encodeCfg } from '../secretbox'
+import { checkQuota, recordAiCall } from '../quota'
 import { AI_TOOLS, NAV_HINTS, TYPE_ALIASES } from '../../shared/ai-tools'
 import { certifiedTermDigest, resolveTerms, semanticGuard } from '../engine/semantic'
 import type { SessionUser } from '../../shared/types'
@@ -161,6 +162,12 @@ aiRoutes.post('/chat', async (c) => {
   const space = resolveSpace(c, user)
   const spaceId = space?.id ?? ''
 
+  // 套餐配额：本月 AI 调用超限返回 402（私有化默认无限套餐不触发）
+  if (spaceId) {
+    const aiQuota = checkQuota(spaceId, 'aiCalls')
+    if (!aiQuota.ok) return c.json({ error: aiQuota.reason, code: 'QUOTA_EXCEEDED', quota: { used: aiQuota.used, limit: aiQuota.limit } }, 402)
+  }
+
   // 系统用法类问题前置拦截（确定性，LLM 模式也生效）：直接给入口 + navigate，不绕数据/知识工具
   const help = systemHelp(last.content)
   if (help) return c.json(help)
@@ -175,6 +182,7 @@ aiRoutes.post('/chat', async (c) => {
   if (cfg) {
     try {
       const res = await callLlm(cfg, [{ role: 'system', content: system }, ...toOpenAi(history)], AI_TOOLS)
+      if (spaceId) recordAiCall(spaceId)
       return c.json(res)
     } catch (e) {
       // 网关不可用（429/超时）时降级到本地引擎，保留其工具调用，别把 toolCalls 丢掉

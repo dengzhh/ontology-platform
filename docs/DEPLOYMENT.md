@@ -277,3 +277,108 @@ systemctl start ontoos
 | 备份文件很小/校验失败 | 检查磁盘空间；`--verify` 会做 `integrity_check` |
 
 日志位置：Docker `docker compose logs ontoos`；裸机 systemd `journalctl -u ontoos -f`。
+
+---
+
+## 九、监控与告警
+
+### 健康探针端点
+
+```bash
+curl -s http://localhost:5000/api/admin/health | jq
+```
+
+返回 200（健康）或 503（降级），包含四项自检：
+
+| 检查项 | 内容 | 告警建议 |
+|---|---|---|
+| `database` | 连通性 + 对象总数 | ok=false 立即告警（P1） |
+| `disk` | 数据盘剩余空间 | 剩余 < 1GB 时 ok=false；建议 < 10GB 提前告警 |
+| `wal` | SQLite WAL 文件大小 | > 512MB 说明长时间未 checkpoint，检查长事务 |
+| `ai` | AI 网关配置状态 | 未配置为正常（走本地引擎），仅记录 |
+
+同时返回 `uptimeSec`（运行时长）、`rssMB`（内存）、`latencyMs`（自检耗时）。
+
+### 接入外部监控
+
+**Docker healthcheck**（已内置在 Dockerfile / compose）：
+
+```yaml
+healthcheck:
+  test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:5000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+```
+
+**Zabbix / Prometheus blackbox / Uptime Kuma**：监控 `GET /api/health`（轻量，2xx 即健康）与 `GET /api/admin/health`（深度，需管理员 token）。
+
+**日志告警**：生产日志为 JSON 行，可据此配置规则告警：
+
+```bash
+# 错误率告警：5 分钟内 5xx 超过 10 次
+docker compose logs --since 5m ontoos | grep '"status":5' | wc -l
+
+# 前端异常上报（含堆栈）
+docker compose logs ontoos | grep '"level":"client"'
+```
+
+**关键日志字段**：`t`（时间）、`method`、`path`、`status`、`ms`（耗时）；错误行为 `level:"error"`，前端上报为 `level:"client"`。
+
+### 建议的告警阈值
+
+| 指标 | 警告 | 严重 |
+|---|---|---|
+| `/api/health` 连续失败 | 2 次 | 5 次 |
+| 磁盘剩余 | < 10 GB | < 1 GB |
+| 5xx 占比 | > 1% | > 5% |
+| 登录失败次数 | > 50 次/小时 | > 500 次/小时（可能被爆破） |
+| 备份任务失败 | 1 次 | 连续 2 次 |
+
+---
+
+## 十、商业套餐与配额（SaaS 模式）
+
+### 默认行为
+
+私有化部署默认使用 **unlimited（不限）套餐**，配额拦截不生效，行为与之前完全一致。
+
+### 套餐定义
+
+| 套餐 | 对象条数 | 成员数 | 文档存储 | 每月 AI 调用 |
+|---|---|---|---|---|
+| free | 1,000 | 5 | 200 MB | 500 |
+| team | 50,000 | 30 | 5 GB | 20,000 |
+| enterprise | 500,000 | 200 | 50 GB | 200,000 |
+| unlimited | 不限 | 不限 | 不限 | 不限 |
+
+### 管理方式
+
+- **控制面板 → 空间配额与套餐**：切换套餐、查看四项用量与百分比（≥70% 黄色、≥90% 红色）
+- API：`GET /api/spaces/:id/quota`（快照）、`PUT /api/spaces/:id/quota`（切套餐，仅空间 owner 或管理员）
+- 超限时新建对象 / 加成员 / AI 对话返回 **402** 与可读提示，不会产生脏数据
+
+### 自助注册（默认关闭）
+
+企业私有化部署应保持**关闭**（否则任何人都能注册并创建自己的空间）。SaaS 模式下：
+
+```bash
+# 管理员开启
+curl -X PUT http://localhost:5000/api/admin/signup \
+  -H "Authorization: Bearer <admin-token>" \
+  -H "Content-Type: application/json" -d '{"enabled":true}'
+```
+
+开启后登录页出现「注册新组织」入口，注册即创建组织空间并初始化免费套餐配额。
+
+环境变量：
+
+| 变量 | 默认 | 说明 |
+|---|---|---|
+| `ONTOOS_DEFAULT_PLAN` | `unlimited` | 未显式配置配额的空间使用的套餐 |
+| `ONTOOS_SIGNUP_PLAN` | `free` | 自助注册新租户的初始套餐 |
+
+---
+
+## 十一、PostgreSQL 迁移
+
+见 [PG-MIGRATION.md](./PG-MIGRATION.md)：含迁移触发条件、工作量评估（8–15 人日）、已就绪的导出桥（`npx tsx server/exportData.ts`）、五阶段操作步骤与回归清单。
+
+**结论**：单机部署下 SQLite 已足够；出现「多实例部署」或「并发写瓶颈」时再迁移。

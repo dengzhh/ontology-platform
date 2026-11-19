@@ -27,7 +27,7 @@
 
 **文档内截图**：`docs/screenshots/` 下 29 张 1440×900 真实界面截图（登录、仪表盘、建模、图谱、检索、ChatBI 四形态、工作流预设、审批、控制面板等），全部来自运行中的系统。
 
-**配套资产**：`demo-data/FEATURE-MATRIX.md`（42 页验证矩阵）、`tests/api-contract.md`（端点契约）、`tests/smoke.mjs`（195 项黑盒断言）、`demo-data/load.mjs`（118 项幂等数据集）、`CONVENTIONS.md`（开发规范）。
+**配套资产**：`demo-data/FEATURE-MATRIX.md`（42 页验证矩阵）、`tests/api-contract.md`（端点契约）、`tests/smoke.mjs`（204 项黑盒断言）、`demo-data/load.mjs`（118 项幂等数据集）、`CONVENTIONS.md`（开发规范）。
 
 ---
 
@@ -202,7 +202,7 @@
 - **功能**：双 Tab——① **流程编辑器**：可视化编排业务流程（开始 / 执行动作 / 人工审批 / 发送通知 / 结束五类节点），点选节点编辑名称/动作绑定/后继、添加删除节点、拖拽布局、连接模式建线、点连线删除、undo/redo（Ctrl+Z / Ctrl+Shift+Z）、滚轮缩放平移、保存/删除流程；执行动作节点可绑定本体已登记的真实动作类型（显示审批标识）。② **动作链观测**：每个 `actionType` 的执行次数/待审批数/近期执行日志与观测画布（滚轮缩放）。
 - **原理**：自定义流程存 `settings.key='machinery_flows_${spaceId}'`（`GET/POST /p10plus/machinery/flows`、`DELETE /:id`），保存校验节点 id 唯一/类型合法/`next` 目标存在/绑定动作存在；观测侧 `p10plus.ts` 从 `actionTypes` + `actionLogs` 真实聚合 `execCount` / `pendingCount`。
 - **边界**：流程定义可编辑持久化，但**不驱动动作引擎执行**（与「工作流编排」不同：那里是真实执行链）；连线为单 `next` + 顺序回退（无并行分支）；观测画布只读。
-- **验证**：smoke 195/195（流程 CRUD/回读/断链 400/空节点 400）；load 118/118；浏览器实测 9/9（点选/添加/undo/建线/保存/刷新回读/观测 Tab）；截图 `machinery-editor.png`。
+- **验证**：smoke 204/204（流程 CRUD/回读/断链 400/空节点 400）；load 118/118；浏览器实测 9/9（点选/添加/undo/建线/保存/刷新回读/观测 Tab）；截图 `machinery-editor.png`。
 
 #### ⑭ 调度优化 `/ontology/scheduling`
 
@@ -336,7 +336,7 @@
 - **功能**：可视化节点编排（点选编辑/拖拽布局/上移下移/复制/删除确认）、**画布滚轮缩放 / 空白拖拽平移 / 复位 / 百分比**、**undo/redo（按钮 + Ctrl+Z / Ctrl+Shift+Z）**、**连线控制**（连接模式点两节点建 `next`、点已有连线删除确认、条件节点「是/否」目标可编辑）、6 个开箱即用预设（4 个离线可跑）、保存/删除/**预览运行 → 确认 → 真实执行**、逐步执行记录与动作结果、另存副本。
 - **原理**：`server/routes/logic.ts` + `shared/workflowTemplates.ts`：`transform` 离线节点（extract 提数值 / keyword 命中标记 / format）、条件节点按 `nextYes/nextNo` 真实跳转、**一般节点按显式 `next` 连线跳转**（无则回退数组顺序）、`byId` Map + `visited` 防环 + 20 步上限；`llm` 节点网关失败降级规则摘要并标 `branch:'degraded'`。**真实业务动作**：output 节点 `action ∈ create_object|send_notification|create_approval|none`，`POST /workflows/:id/run` 的 `mode=preview`（默认）只算结果并返回 `actions[]` 预览**不写业务数据**，`mode=apply` 才真实写 `objects`（工单对象）/ `notifications` / `approvals` 并返回 `refId`，审计区分「预览工作流 / 应用工作流动作」。工作流存 `settings.key='logic_workflows_${spaceId}'`；预设不落库动态合并；保存预设自动另存「副本」。`FlowCanvas` 支持点选/拖拽（坐标反算）与可选 `zoomable`（单 `<g transform>` 承载缩放平移）；节点类型徽章已改为卡片内右上角渲染（不再用 `-top` 越出 `foreignObject` 边界被裁切），工作流编排 / 管道构建 / 流程编排三页画布交互能力一致。
 - **边界**：`WorkflowStep.model` 字段服务端未使用（统一走全局 AI 配置）；连线只能一条 `next` + 条件两分支（无并行/汇聚/多条件复合）；无并发/定时触发/版本管理；2 个 AI 增强预设依赖网关；缩放范围 30%~400%；`create_object` 默认写 `ticket` 类型，非通用任意类型校验；undo 以「离散操作 + 字段失焦 + 拖拽结束」为粒度，最多 50 步。详见 [§4.2](#42-函数沙箱与工作流)。
-- **验证**：smoke 195/195（dry-run 零副作用 / apply 真实落库并返回 refId / 通知与审批两类动作 / `next` 跳转 / 断链 400）；load.mjs 118/118；浏览器实测 undo/redo、连接模式建线、连线删除取消、预览确认取消与应用结果展示、缩放/平移/复位；截图 `aip-logic-presets.png`、`aip-logic-zoom.png`、`aip-logic-actions.png`。
+- **验证**：smoke 204/204（dry-run 零副作用 / apply 真实落库并返回 refId / 通知与审批两类动作 / `next` 跳转 / 断链 400）；load.mjs 118/118；浏览器实测 undo/redo、连接模式建线、连线删除取消、预览确认取消与应用结果展示、缩放/平移/复位；截图 `aip-logic-presets.png`、`aip-logic-zoom.png`、`aip-logic-actions.png`。
 
 ![工作流预设](screenshots/aip-logic-presets.png)
 
@@ -356,7 +356,7 @@
 - **功能**：选知识库文档 + 任务 → 真实 AI 结构化分析；**带文档上下文与历史的多轮追问**；引用文档标签；失败保留草稿 + 一键重试；删除二次确认。
 - **原理**：`aip.ts:182-335`：`buildDocContext()` 把文档正文（截断 5000 字）以 `role:'system'` 持久化；`POST /threads` 失败返回 `{error, retryable:true}` 502 并保留会话；`POST /:id/retry` 从 system/user 消息恢复重跑；`POST /:id/followup` 拼「文档上下文 + 历史对话 + 追问」调 LLM 并双写消息；`GET /:id` 返回 `pendingRetry` 且**不暴露 system 上下文**；前端对话气泡 + 乐观追加/失败回滚。
 - **边界**：不降级（网关失败明确报错，不伪造结果）；上下文截断 5000 字；追问把全部历史拼入（无窗口裁剪）；无附件解析/段落级引用定位。与「工作流编排」的分工见 [§4.2](#42-函数沙箱与工作流)。
-- **验证**：smoke 195 中草稿保留/retry/followup 契约；截图 `doc-analysis.png`。
+- **验证**：smoke 204 中草稿保留/retry/followup 契约；截图 `doc-analysis.png`。
 
 ![文档分析](screenshots/doc-analysis.png)
 
@@ -386,7 +386,7 @@
 - **功能**：22 工具对话式操作平台；ChatBI 对话内出图（折线/饼图/条形/交叉热力表 + 同比环比对比卡）；主动澄清；会话持久化；多空间快捷示例；双引擎降级。
 - **原理**：完整链路见 [§4.1](#41-智能助手与语义层) 与 [§4.3](#43-chatbi-与聚合引擎)。
 - **边界**：最多 4 轮工具循环；图表仅最近 12 / 前 8 组；`cites` 协议字段未渲染来源 chips；本地引擎只能发起约 14 个工具（其余需 LLM 模式）；网关 429 时降级本地引擎。
-- **验证**：smoke 195 项；3 张 ChatBI 截图（`aip-chatbi.png` / `-trend.png` / `-cross.png`）。
+- **验证**：smoke 204 项；3 张 ChatBI 截图（`aip-chatbi.png` / `-trend.png` / `-cross.png`）。
 
 ![ChatBI 分组聚合](screenshots/aip-chatbi.png)
 
@@ -529,7 +529,7 @@
 
 | 资产 | 规模 | 说明 |
 |---|---|---|
-| `tests/smoke.mjs` | **195 断言 / 0 失败** | 零依赖黑盒：登录 → 60+ 读端点 → 写闭环 → 权限 → 外部源 → ChatBI → 沙箱 → 分页/批量 → 预设/追问 |
+| `tests/smoke.mjs` | **204 断言 / 0 失败** | 零依赖黑盒：登录 → 60+ 读端点 → 写闭环 → 权限 → 外部源 → ChatBI → 沙箱 → 分页/批量 → 预设/追问 |
 | `demo-data/load.mjs` | **118 项幂等** | 24 个月订单时序（季节波动 + 年增 18%）、2 个工作流、6 预设、外部库、24 扫描素材 |
 | `demo-data/stress.mjs` | 10 万行基准 | 灌入/列表/count/关键词延迟，自动清理 |
 | `demo-data/FEATURE-MATRIX.md` | 42 页矩阵 | 功能 ↔ 验证数据 ↔ 体验步骤 |
@@ -581,7 +581,7 @@ npm run seed             # 演示数据
 npm run dev              # 前端 5174 + API 5000
 python demo-data/build_external_db.py
 node demo-data/load.mjs  # 118 项验证数据集
-node tests/smoke.mjs     # 195 项黑盒断言
+node tests/smoke.mjs     # 204 项黑盒断言
 ```
 
 默认账号 `chen.xingye / ontos@2026`；顶栏可切换组织 / 个人 / 家庭空间。

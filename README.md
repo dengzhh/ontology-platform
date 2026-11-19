@@ -9,7 +9,7 @@
 [![React](https://img.shields.io/badge/React_18-TypeScript-61dafb.svg)]()
 [![Hono](https://img.shields.io/badge/Hono-API_server-e36002.svg)]()
 [![SQLite](https://img.shields.io/badge/SQLite-Drizzle_ORM-003b57.svg)]()
-[![Tests](https://img.shields.io/badge/smoke-195/195_passing-2ea44f.svg)]()
+[![Tests](https://img.shields.io/badge/smoke-204/204_passing-2ea44f.svg)]()
 
 **42 个应用 · 全栈真实落库 · 一条命令启动 · 零外部依赖**
 
@@ -133,7 +133,7 @@ npm run restore -- data/backups/ontoos-YYYYMMDD-HHmmss.db   # 恢复（需先停
 | `npm run build` | 前端类型检查 + 产物构建（dist/） |
 | `npm run typecheck:server` | 服务端类型检查 |
 | `npm run backup` | 在线备份 + 完整性校验 |
-| `npm run smoke` | 全站 API 黑盒冒烟（195 项断言，零依赖） |
+| `npm run smoke` | 全站 API 黑盒冒烟（204 项断言，零依赖） |
 | `npm run db:migrate` | 幂等建表 + 空间地基回填 |
 | `npm run seed` | 重置并写入演示数据 |
 
@@ -210,7 +210,7 @@ tests/ · demo-data/            # 冒烟/契约/清单/E2E 剧本/扫描素材 �
 
 | 资产 | 规模 | 说明 |
 |---|---|---|
-| `tests/smoke.mjs` | **195 项断言全绿** | 零依赖黑盒：登录 → 60+ 读端点 → 写闭环 → 权限 → 外部源 → ChatBI → 函数沙箱 → 分页/批量 |
+| `tests/smoke.mjs` | **204 项断言全绿** | 零依赖黑盒：登录 → 60+ 读端点 → 写闭环 → 权限 → 外部源 → ChatBI → 函数沙箱 → 分页/批量 |
 | `demo-data/load.mjs` | **118 项幂等装载** | 一键生成验证全部功能的数据集（含外部库构建） |
 | `demo-data/stress.mjs` | **10 万行基准** | 事务灌入 726ms、索引列表 0.3ms、count 5.4ms，自动清理 |
 | `demo-data/FEATURE-MATRIX.md` | 42 页矩阵 | 每页功能 ↔ 验证数据 ↔ 体验步骤 |
@@ -238,7 +238,8 @@ tests/ · demo-data/            # 冒烟/契约/清单/E2E 剧本/扫描素材 �
 - 所有文案为简体中文；开发规范见 [CONVENTIONS.md](./CONVENTIONS.md)
 - **完整技术文档**：[docs/TECHNICAL-GUIDE.md](./docs/TECHNICAL-GUIDE.md) —— 42 个模块逐个说明「功能 / 实现原理 / 能力边界 / 验证方式」，含 29 张真实截图、架构分层、横切能力与边界总表
 - **项目状态报告**：[docs/PROJECT-STATUS.md](./docs/PROJECT-STATUS.md) —— 完成度评估、分域评分、遗漏任务清单与下一步路线图
-- **部署手册**：[docs/DEPLOYMENT.md](./docs/DEPLOYMENT.md) —— Docker/systemd 部署、备份恢复演练、安全上线检查清单、数据处理与合规说明
+- **部署手册**：[docs/DEPLOYMENT.md](./docs/DEPLOYMENT.md) —— Docker/systemd 部署、备份恢复演练、安全上线检查清单、数据处理与合规说明、监控告警接入、套餐配额管理
+- **PG 迁移手册**：[docs/PG-MIGRATION.md](./docs/PG-MIGRATION.md) —— 迁移触发条件、工作量评估、导出桥用法、五阶段操作步骤
 - **用户手册**：[docs/USER-GUIDE.md](./docs/USER-GUIDE.md) —— 面向业务使用者的上手路径、日常工作流与常见问题
 - 本项目单进程零运维设计，适合本地部署、私有化交付与二次开发
 

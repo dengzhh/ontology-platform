@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { Boxes, Sparkles, Database, ShieldCheck, LogIn, Loader2 } from 'lucide-react'
 import { useUI } from '@/store/ui'
+import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
 
 const DEMO_ACCOUNTS = [
@@ -20,6 +21,12 @@ export default function Login() {
   const [password, setPassword] = useState(params.get('account') ? '' : 'ontos@2026')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  /** 是否开放自助注册（默认关闭；登录页据此决定是否显示注册入口） */
+  const [signupEnabled, setSignupEnabled] = useState(false)
+
+  useEffect(() => {
+    api<{ enabled: boolean }>('/auth/register-status').then((r) => setSignupEnabled(r.enabled)).catch(() => {})
+  }, [])
   /** 会话失效跳转标记：401 时 api.ts 会带上 expired=1，这里给出明确原因 */
   const expired = params.get('expired') === '1'
   const nextPath = params.get('next') || ''
@@ -132,6 +139,13 @@ export default function Login() {
               {busy ? '登录中…' : '登 录'}
             </button>
           </form>
+
+          {signupEnabled && (
+            <div className="mt-3 text-center text-[11px] text-slate-400">
+              还没有账号？
+              <Link to="/register" className="ml-1 font-medium text-brand-600 hover:underline">注册新组织</Link>
+            </div>
+          )}
 
           <div className="mt-6 border-t border-slate-100 pt-4">
             <div className="mb-2 text-[11px] font-semibold text-slate-400">演示账号（密码均为 ontos@2026，点击快速填入）</div>

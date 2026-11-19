@@ -1,10 +1,13 @@
 import { Hono } from 'hono'
 import { eq } from 'drizzle-orm'
+import fs from 'node:fs'
+import path from 'node:path'
 import { requireAuth, requireAdmin } from '../auth'
-import { db, tables } from '../db'
+import { db, sqlite, tables } from '../db'
 import { resolveSpace } from '../space'
 import { getSmtpConfig, saveSmtpConfig, sendMail, isSmtpConfigured, type SmtpConfig } from '../mailer'
 import { decodeCfg, encodeCfg } from '../secretbox'
+import { selfSignupEnabled, setSelfSignup } from '../quota'
 import type { SessionUser } from '../../shared/types'
 
 function db_insertAudit(actor: string, action: string, target: string) {
@@ -222,4 +225,67 @@ adminRoutes.post('/smtp/test', requireAdmin, async (c) => {
   const res = await sendMail(to, '【OntoOS】邮件服务测试', '这是一封来自 OntoOS 平台的测试邮件。\n\n如果你收到了它，说明邮件服务配置成功，系统将以此身份发送邀请与通知。\n\n—— 星辰智造集团 数字化转型部')
   if (!res.ok) return c.json({ error: `发送失败：${res.error}` }, 502)
   return c.json({ ok: true, messageId: res.messageId, previewUrl: res.previewUrl })
+})
+
+/* ============ 平台健康自检（运维探针 / 监控告警） ============ */
+
+/** 深度健康检查：数据库连通/完整性、磁盘余量、关键计数、AI 配置状态
+ *  返回 200=健康，503=降级（供 Docker healthcheck / Prometheus / Zabbix 探针） */
+adminRoutes.get('/health', (c) => {
+  const started = Date.now()
+  const checks: Record<string, { ok: boolean; detail: string }> = {}
+
+  // 数据库
+  try {
+    const one = sqlite.prepare('SELECT 1 AS x').get() as { x: number }
+    const objs = (sqlite.prepare('SELECT count(*) AS c FROM objects').get() as { c: number }).c
+    checks.database = { ok: one?.x === 1, detail: `ok · objects=${objs}` }
+  } catch (e) {
+    checks.database = { ok: false, detail: e instanceof Error ? e.message : '查询失败' }
+  }
+
+  // 磁盘余量（数据目录所在盘）
+  try {
+    const st = fs.statfsSync(process.cwd())
+    const freeGB = (st.bavail * st.bsize) / 1024 / 1024 / 1024
+    checks.disk = { ok: freeGB > 1, detail: `free=${freeGB.toFixed(1)}GB` }
+  } catch {
+    checks.disk = { ok: true, detail: 'unavailable' }
+  }
+
+  // WAL 大小（异常增长说明长时间未 checkpoint）
+  try {
+    const wal = path.join(process.cwd(), 'data', 'ontoos.db-wal')
+    const sizeMB = fs.existsSync(wal) ? fs.statSync(wal).size / 1024 / 1024 : 0
+    checks.wal = { ok: sizeMB < 512, detail: `${sizeMB.toFixed(1)}MB` }
+  } catch {
+    checks.wal = { ok: true, detail: 'unavailable' }
+  }
+
+  // AI 配置（未配置不算不健康，只是能力降级）
+  const aiRow = db.select().from(tables.settings).where(eq(tables.settings.key, 'ai')).get()
+  const aiCfg = decodeCfg((aiRow?.value ?? {}) as Record<string, unknown>)
+  checks.ai = { ok: true, detail: aiCfg.endpoint && aiCfg.apiKey ? `configured(${String(aiCfg.model)})` : 'not-configured(local-engine)' }
+
+  const healthy = Object.values(checks).every((x) => x.ok)
+  if (!healthy) c.status(503)
+  return c.json({
+    status: healthy ? 'ok' : 'degraded',
+    uptimeSec: Math.round(process.uptime()),
+    rssMB: Math.round(process.memoryUsage().rss / 1024 / 1024),
+    latencyMs: Date.now() - started,
+    checks,
+    time: new Date().toISOString(),
+  })
+})
+
+/* ============ 自助注册开关（SaaS 模式） ============ */
+
+adminRoutes.get('/signup', requireAdmin, (c) => c.json({ enabled: selfSignupEnabled() }))
+
+adminRoutes.put('/signup', requireAdmin, async (c) => {
+  const body = await c.req.json<{ enabled?: boolean }>()
+  setSelfSignup(Boolean(body.enabled))
+  db_insertAudit(c.get('user').name, body.enabled ? '开启自助注册' : '关闭自助注册', '注册开关')
+  return c.json({ ok: true, enabled: selfSignupEnabled() })
 })

@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm'
 import { db, tables } from '../db'
 import { loadSessionUser, issueToken, setSessionCookie, clearSessionCookie, verifyPassword, buildSessionUser, verifyInviteToken, hashPassword, bumpTokenEpoch } from '../auth'
 import { clientIp, loginLockedRemaining, recordLoginFail, recordLoginOk } from '../security'
+import { selfSignupEnabled, initTenantQuota } from '../quota'
 
 export const authRoutes = new Hono()
 
@@ -93,6 +94,53 @@ authRoutes.post('/password', async (c) => {
   }).run()
   return c.json({ ok: true, token })
 })
+
+/** 自助注册（默认关闭）：开启后新用户注册即创建组织空间 + 免费套餐配额
+ *  私有化部署保持关闭，只在做 SaaS 时由管理员在控制面板打开 */
+authRoutes.post('/register', async (c) => {
+  if (!selfSignupEnabled()) return c.json({ error: '当前未开放自助注册，请联系管理员邀请' }, 403)
+  const body = await c.req.json<{ name?: string; account?: string; password?: string; email?: string; orgName?: string }>()
+  const name = (body.name ?? '').trim()
+  const account = (body.account ?? '').trim().toLowerCase()
+  if (!name || !account || !body.password) return c.json({ error: '请填写姓名、账号与密码' }, 400)
+  if (!/^[a-z0-9._-]{3,32}$/.test(account)) return c.json({ error: '账号需 3-32 位，仅允许字母、数字、点、下划线、短横线' }, 400)
+  if (body.password.length < 8 || !/[a-zA-Z]/.test(body.password) || !/\d/.test(body.password)) {
+    return c.json({ error: '密码至少 8 位，且需同时包含字母与数字' }, 400)
+  }
+  if (db.select().from(tables.users).where(eq(tables.users.account, account)).get()) {
+    return c.json({ error: '该账号已被注册' }, 409)
+  }
+  // 新租户管理员：取 analyst 作为基础角色，空间内为 owner（权限由空间成员关系授予）
+  const role = db.select().from(tables.roles).where(eq(tables.roles.id, 'analyst')).get()
+    ?? db.select().from(tables.roles).all()[0]
+  if (!role) return c.json({ error: '平台尚未初始化角色，请联系管理员' }, 500)
+
+  const userId = `U-${Date.now().toString(36).toUpperCase()}`
+  db.insert(tables.users).values({
+    id: userId, name, account, passwordHash: hashPassword(body.password),
+    dept: '', roleId: role.id, markings: ['内部'], status: '在职', lastLoginAt: '', createdAt: Date.now(),
+  }).run()
+
+  // 租户空间（org 类型），注册者即 owner
+  const spaceId = `sp-${userId}`
+  const orgName = (body.orgName ?? '').trim() || `${name}的组织`
+  db.insert(tables.spaces).values({ id: spaceId, name: orgName, kind: 'org', ownerId: userId, templatePack: '', createdAt: Date.now() }).run()
+  db.insert(tables.spaceMembers).values({ spaceId, userId, role: 'owner' }).run()
+  initTenantQuota(spaceId)
+
+  db.insert(tables.auditEvents).values({
+    id: `AE-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+    actor: name, action: '自助注册', target: `${account} / ${orgName}`, ip: clientIp(c), createdAt: Date.now(),
+  }).run()
+
+  const token = await issueToken(userId)
+  setSessionCookie(c, token)
+  const user = buildSessionUser(userId)
+  return c.json({ token, user, space: { id: spaceId, name: orgName } })
+})
+
+/** 注册开关状态（公开：登录页据此决定是否显示注册入口） */
+authRoutes.get('/register-status', (c) => c.json({ enabled: selfSignupEnabled() }))
 
 /** 当前会话用户 */
 authRoutes.get('/me', async (c) => {

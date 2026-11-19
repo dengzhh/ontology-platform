@@ -8,6 +8,7 @@ import AssistPanel from '@/components/layout/AssistPanel'
 import NotificationPanel from '@/components/layout/NotificationPanel'
 import { UIProvider, useUI } from '@/store/ui'
 import Login from '@/pages/Login'
+import Register from '@/pages/Register'
 import Invite from '@/pages/Invite'
 import MobileScan from '@/pages/MobileScan'
 import NotFound from '@/pages/NotFound'
@@ -170,6 +171,7 @@ export default function App() {
     <UIProvider>
       <Routes>
         <Route path="/login" element={<Login />} />
+        <Route path="/register" element={<Register />} />
         <Route path="/invite" element={<Invite />} />
         {/* 手机扫码协同：公开路由，不经过登录门卫 */}
         <Route path="/m/:id" element={<MobileScan />} />

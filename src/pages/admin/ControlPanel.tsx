@@ -384,8 +384,7 @@ interface EnvResp {
   space: { name: string; kind: string } | null; uptimeSeconds: number
 }
 
-export default function ControlPanelPage() {
-  const featQ = useApi<{ features: Record<string, boolean> }>('/admin/features')
+export default function ControlPanelPage() {  const featQ = useApi<{ features: Record<string, boolean> }>('/admin/features')
   const usageQ = useApi<UsageResp>('/admin/usage')
   const envQ = useApi<EnvResp>('/admin/environment')
   const [switches, setSwitches] = useState<Record<string, boolean>>({})
@@ -465,6 +464,9 @@ export default function ControlPanelPage() {
         </div>
       </Card>
 
+      {/* 空间配额与套餐（SaaS/容量管理：真实计量 + 超限拦截） */}
+      <QuotaCard />
+
       {/* 用量监控（真实数据） */}
       <Card>
         <CardHeader title="用量监控" desc="按审计/对象/文档/消息表实时聚合" actions={<Btn size="sm" onClick={() => usageQ.reload()}><Activity size={12} /> 刷新</Btn>} />
@@ -539,5 +541,104 @@ export default function ControlPanelPage() {
         </Card>
       </div>
     </PageShell>
+  )
+}
+
+/** 空间配额卡片：套餐切换 + 四项用量进度（真实计量，超限时创建接口返回 402） */
+function QuotaCard() {
+  const spacesQ = useApi<{ spaces: { id: string; name: string; kind: string; role: string }[] }>('/spaces')
+  const spaces = spacesQ.data?.spaces ?? []
+  const [spaceId, setSpaceId] = useState('')
+  const [pending, setPending] = useState('')
+  const [msg, setMsg] = useState('')
+  const quotaQ = useApi<{
+    quota: { objects: number; members: number; storageMB: number; aiCalls: number }
+    usage: { objects: number; members: number; storageMB: number; aiCalls: number }
+    pct: { objects: number; members: number; storageMB: number; aiCalls: number }
+    plans: string[]
+  }>(spaceId ? `/spaces/${spaceId}/quota` : null)
+
+  useEffect(() => {
+    if (!spaceId && spaces.length) setSpaceId(spaces[0].id)
+  }, [spaces, spaceId])
+
+  const PLAN_LABEL: Record<string, string> = { free: '免费版', team: '团队版', enterprise: '企业版', unlimited: '不限（私有化）' }
+  const items = [
+    { key: 'objects', label: '对象条数' },
+    { key: 'members', label: '成员数' },
+    { key: 'storageMB', label: '文档存储(MB)' },
+    { key: 'aiCalls', label: '本月 AI 调用' },
+  ] as const
+
+  async function changePlan(plan: string) {
+    setPending(plan); setMsg('')
+    try {
+      await api(`/spaces/${spaceId}/quota`, { method: 'PUT', body: { plan } })
+      setMsg(`已切换为「${PLAN_LABEL[plan] ?? plan}」`)
+      quotaQ.reload()
+    } catch (e) { setMsg(e instanceof Error ? e.message : '切换失败') }
+    finally { setPending('') }
+  }
+
+  return (
+    <Card>
+      <CardHeader
+        title="空间配额与套餐"
+        desc="按空间计量；超出套餐上限时新建对象/成员/AI 调用会被拒绝（402）"
+        actions={
+          <select
+            value={spaceId}
+            onChange={(e) => setSpaceId(e.target.value)}
+            className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-[12px] text-slate-700 focus:border-brand-400 focus:outline-none"
+          >
+            {spaces.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </select>
+        }
+      />
+      {!spaceId ? (
+        <div className="py-6 text-center text-xs text-slate-400">加载空间…</div>
+      ) : !quotaQ.data ? (
+        <div className="py-6 text-center text-xs text-slate-400">加载配额…</div>
+      ) : (
+        <>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {items.map((it) => {
+              const used = quotaQ.data!.usage[it.key]
+              const limit = quotaQ.data!.quota[it.key]
+              const pct = quotaQ.data!.pct[it.key]
+              const unlimited = limit >= Number.MAX_SAFE_INTEGER - 1
+              const bar = pct >= 90 ? 'bg-red-500' : pct >= 70 ? 'bg-amber-500' : 'bg-brand-500'
+              return (
+                <div key={it.key} className="rounded-xl border border-slate-100 p-3">
+                  <div className="text-[11px] text-slate-400">{it.label}</div>
+                  <div className="mt-1 flex items-baseline gap-1">
+                    <span className="text-lg font-bold text-slate-900">{used.toLocaleString()}</span>
+                    <span className="text-[11px] text-slate-400">/ {unlimited ? '不限' : limit.toLocaleString()}</span>
+                  </div>
+                  <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-100">
+                    <div className={cn('h-full rounded-full transition-all', bar)} style={{ width: `${Math.max(unlimited ? 2 : 0, pct)}%` }} />
+                  </div>
+                  {!unlimited && <div className="mt-1 text-[10px] text-slate-400">已用 {pct}%</div>}
+                </div>
+              )
+            })}
+          </div>
+          <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3">
+            <span className="text-[11px] text-slate-500">切换套餐：</span>
+            {quotaQ.data.plans.map((p) => (
+              <button
+                key={p}
+                disabled={!!pending}
+                onClick={() => changePlan(p)}
+                className="rounded-lg border border-slate-200 px-2.5 py-1 text-[11px] font-medium text-slate-600 hover:border-brand-300 hover:text-brand-700 disabled:opacity-50"
+              >
+                {pending === p ? '切换中…' : PLAN_LABEL[p] ?? p}
+              </button>
+            ))}
+            {msg && <span className="text-[11px] text-emerald-600">{msg}</span>}
+          </div>
+        </>
+      )}
+    </Card>
   )
 }

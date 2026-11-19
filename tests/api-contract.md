@@ -65,6 +65,9 @@
   GET /usage
   GET /environment
   POST /smtp/test
+  GET /health               # 深度健康自检（503=降级）
+  GET /signup               # 自助注册开关
+  PUT /signup               # 切换自助注册
 
 ### /api/ai  (aiRoutes)
   GET /conversations
@@ -94,6 +97,9 @@
 ### /api/auth  (authRoutes)
   POST /activate
   POST /login
+  POST /register            # 自助注册（需管理员开启开关）
+  GET /register-status      # 公开：注册开关状态
+  POST /password            # 自助修改密码（吊销旧令牌并重签）
   GET /me
   POST /logout
 
@@ -280,6 +286,8 @@
   POST /ensure-personal
   POST /
   POST /:id/members
+  GET /:id/quota            # 配额快照（套餐/用量/百分比）
+  PUT /:id/quota            # 调整套餐（owner 或管理员）
   POST /:id/install-template
   GET /:id/export
   POST /import
