@@ -803,6 +803,75 @@ async function main() {
   const badLogin = await req('POST', '/api/auth/login', { account: ACCOUNT, password: 'wrong-password' }, 401)
   log(badLogin.ok, 'POST /auth/login 错误密码返回 401', `status=${badLogin.status}`)
 
+  /* ---------- 5.1 安全行为：令牌吊销 / 自助改密 / 防爆破 ---------- */
+  console.log('\n--- 安全行为 ---')
+  {
+    // 本段所有用例使用独立令牌，避免吊销操作影响后续断言的全局 token；
+    // 段末统一重新登录刷新 token。
+    const fresh = await req('POST', '/api/auth/login', { account: ACCOUNT, password: PASSWORD })
+    const freshToken = fresh.data?.token
+    if (freshToken) {
+      const before = await fetch(BASE + '/api/auth/me', { headers: { Authorization: 'Bearer ' + freshToken } }).then((r) => r.status).catch(() => 0)
+      log(before === 200, '新建令牌可用（吊销测试前置）', `status=${before}`)
+      const out = await fetch(BASE + '/api/auth/logout', { method: 'POST', headers: { Authorization: 'Bearer ' + freshToken } })
+      const after = await fetch(BASE + '/api/auth/me', { headers: { Authorization: 'Bearer ' + freshToken } }).then((r) => r.status).catch(() => 0)
+      log(out.ok && after === 401, '登出后旧令牌立即失效（服务端吊销）', `logout=${out.status} after=${after}`)
+    } else log(false, '登出吊销测试（前置登录失败）', `status=${fresh.status}`)
+
+    // 自助改密校验用例同样用独立令牌（此时全局 token 已被上一步登出吊销）
+    const pwdUser = await req('POST', '/api/auth/login', { account: ACCOUNT, password: PASSWORD })
+    const pwdToken = pwdUser.data?.token
+    if (pwdToken) {
+      const authed = (p) => fetch(BASE + p, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + pwdToken },
+        body: JSON.stringify({ oldPassword: 'definitely-wrong', newPassword: 'abc12345' }),
+      }).then((r) => r.status).catch(() => 0)
+      const wrongOld = await authed('/api/auth/password')
+      log(wrongOld === 400, 'POST /auth/password 原密码错误返回 400', `status=${wrongOld}`)
+
+      const weak = await fetch(BASE + '/api/auth/password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + pwdToken },
+        body: JSON.stringify({ oldPassword: PASSWORD, newPassword: 'short' }),
+      }).then((r) => r.status).catch(() => 0)
+      log(weak === 400, 'POST /auth/password 弱口令返回 400', `status=${weak}`)
+
+      const tmpNew = 'Smoke' + Date.now().toString(36) + '9'
+      const ch = await fetch(BASE + '/api/auth/password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + pwdToken },
+        body: JSON.stringify({ oldPassword: PASSWORD, newPassword: tmpNew }),
+      })
+      const chData = await ch.json().catch(() => ({}))
+      log(ch.ok && !!chData.token, 'POST /auth/password 改密成功并返回新令牌', `status=${ch.status}`)
+      const oldGone = await fetch(BASE + '/api/auth/me', { headers: { Authorization: 'Bearer ' + pwdToken } }).then((r) => r.status).catch(() => 0)
+      log(oldGone === 401, '改密后旧令牌失效', `status=${oldGone}`)
+      // 还原密码，避免污染本地开发账号
+      const revert = await fetch(BASE + '/api/auth/password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + chData.token },
+        body: JSON.stringify({ oldPassword: tmpNew, newPassword: PASSWORD }),
+      }).then((r) => r.status).catch(() => 0)
+      log(revert === 200, '改密后可再改回（密码还原）', `status=${revert}`)
+    } else log(false, '自助改密测试（前置登录失败）', '')
+
+    // 防爆破：连续失败应出现 429
+    let got429 = false
+    for (let i = 0; i < 8; i++) {
+      const r = await fetch(BASE + '/api/auth/login', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ account: 'smoke-nonexistent-user', password: 'x' }),
+      }).then((x) => x.status).catch(() => 0)
+      if (r === 429) { got429 = true; break }
+    }
+    log(got429, 'POST /auth/login 连续失败触发防爆破 429', got429 ? '' : '未触发锁定')
+
+    // 段末刷新全局 token（本段多次吊销，此前的 token 均不可用）
+    const relogin = await req('POST', '/api/auth/login', { account: ACCOUNT, password: PASSWORD })
+    if (relogin.data?.token) token = relogin.data.token
+  }
+
   /* ---------- 4. 清理测试数据（倒序） ---------- */
   console.log('\n--- 清理测试数据 ---')
   let cleaned = 0

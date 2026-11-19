@@ -9,7 +9,7 @@
 [![React](https://img.shields.io/badge/React_18-TypeScript-61dafb.svg)]()
 [![Hono](https://img.shields.io/badge/Hono-API_server-e36002.svg)]()
 [![SQLite](https://img.shields.io/badge/SQLite-Drizzle_ORM-003b57.svg)]()
-[![Tests](https://img.shields.io/badge/smoke-187/187_passing-2ea44f.svg)]()
+[![Tests](https://img.shields.io/badge/smoke-195/195_passing-2ea44f.svg)]()
 
 **42 个应用 · 全栈真实落库 · 一条命令启动 · 零外部依赖**
 
@@ -133,7 +133,7 @@ npm run restore -- data/backups/ontoos-YYYYMMDD-HHmmss.db   # 恢复（需先停
 | `npm run build` | 前端类型检查 + 产物构建（dist/） |
 | `npm run typecheck:server` | 服务端类型检查 |
 | `npm run backup` | 在线备份 + 完整性校验 |
-| `npm run smoke` | 全站 API 黑盒冒烟（187 项断言，零依赖） |
+| `npm run smoke` | 全站 API 黑盒冒烟（195 项断言，零依赖） |
 | `npm run db:migrate` | 幂等建表 + 空间地基回填 |
 | `npm run seed` | 重置并写入演示数据 |
 
@@ -210,7 +210,7 @@ tests/ · demo-data/            # 冒烟/契约/清单/E2E 剧本/扫描素材 �
 
 | 资产 | 规模 | 说明 |
 |---|---|---|
-| `tests/smoke.mjs` | **187 项断言全绿** | 零依赖黑盒：登录 → 60+ 读端点 → 写闭环 → 权限 → 外部源 → ChatBI → 函数沙箱 → 分页/批量 |
+| `tests/smoke.mjs` | **195 项断言全绿** | 零依赖黑盒：登录 → 60+ 读端点 → 写闭环 → 权限 → 外部源 → ChatBI → 函数沙箱 → 分页/批量 |
 | `demo-data/load.mjs` | **118 项幂等装载** | 一键生成验证全部功能的数据集（含外部库构建） |
 | `demo-data/stress.mjs` | **10 万行基准** | 事务灌入 726ms、索引列表 0.3ms、count 5.4ms，自动清理 |
 | `demo-data/FEATURE-MATRIX.md` | 42 页矩阵 | 每页功能 ↔ 验证数据 ↔ 体验步骤 |
@@ -229,7 +229,7 @@ tests/ · demo-data/            # 冒烟/契约/清单/E2E 剧本/扫描素材 �
 ## 路线图
 
 - ✅ **v1.0.0（当前）**：42 应用全 live；智能助手 22 工具 + ChatBI（趋势/环比同比/TOP-N/交叉/主动澄清）；语义层；多空间；外部数据源；10 万行级性能验证
-- ✅ **v1.1.0 生产就绪**：单端口生产部署（Docker / systemd）· 备份与恢复演练 · 登录防爆破 + 分级限流 · JWT 令牌服务端吊销（登出/改密/停用即失效）· 密钥静态加密（AES-256-GCM）· 安全响应头/CSP/HSTS · 结构化日志与前端异常上报 · GitHub Actions CI
+- ✅ **v1.1.0 生产就绪**：单端口生产部署（Docker / systemd）· 备份与恢复演练 · 登录防爆破 + 分级限流 · JWT 令牌服务端吊销（登出/自助改密/管理员重置/停用即失效）· 用户自助修改密码· 密钥静态加密（AES-256-GCM）· 安全响应头/CSP/HSTS · 结构化日志与前端异常上报 · GitHub Actions CI
 - 🔜 计划中：PostgreSQL/pgvector 适配 · OIDC/SSO · 流式时序采集 · 更多数据连接器（PG/MySQL/Kafka）· 查询管道实时掩码 · 对象存储 V2
 
 ## 说明

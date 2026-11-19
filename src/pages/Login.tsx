@@ -20,11 +20,14 @@ export default function Login() {
   const [password, setPassword] = useState(params.get('account') ? '' : 'ontos@2026')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  /** 会话失效跳转标记：401 时 api.ts 会带上 expired=1，这里给出明确原因 */
+  const expired = params.get('expired') === '1'
+  const nextPath = params.get('next') || ''
 
   // 已有会话（如从其他标签页登录）时直接进入
   useEffect(() => {
-    if (currentUser) navigate('/launcher', { replace: true })
-  }, [currentUser, navigate])
+    if (currentUser) navigate(nextPath || '/launcher', { replace: true })
+  }, [currentUser, navigate, nextPath])
 
   async function submit(e?: React.FormEvent) {
     e?.preventDefault()
@@ -114,6 +117,11 @@ export default function Login() {
                 className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-100"
               />
             </label>
+            {expired && !error && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+                会话已失效（登录过期、已在别处登出，或账号状态变更），请重新登录
+              </div>
+            )}
             {error && <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-600">{error}</div>}
             <button
               type="submit"

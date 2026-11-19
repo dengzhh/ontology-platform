@@ -59,6 +59,41 @@ authRoutes.post('/login', async (c) => {
   return c.json({ token, user })
 })
 
+/** 自助修改密码：校验原密码 → 强度校验 → 更新哈希 → 吊销旧令牌并签发新令牌
+ *  （改密后其他设备/标签页的会话立即失效，当前会话无缝续用） */
+authRoutes.post('/password', async (c) => {
+  const user = await loadSessionUser(c)
+  if (!user) return c.json({ error: '未登录' }, 401)
+  const body = await c.req.json<{ oldPassword?: string; newPassword?: string }>()
+  if (!body.oldPassword || !body.newPassword) return c.json({ error: '请填写原密码与新密码' }, 400)
+
+  const row = db.select().from(tables.users).where(eq(tables.users.id, user.id)).get()
+  if (!row) return c.json({ error: '账号不存在' }, 404)
+  if (!verifyPassword(body.oldPassword, row.passwordHash)) {
+    db.insert(tables.auditEvents).values({
+      id: `AE-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      actor: user.name, action: '修改密码失败（原密码错误）', target: user.account, ip: clientIp(c), createdAt: Date.now(),
+    }).run()
+    return c.json({ error: '原密码不正确' }, 400)
+  }
+  if (body.newPassword.length < 8) return c.json({ error: '新密码至少 8 位' }, 400)
+  if (!/[a-zA-Z]/.test(body.newPassword) || !/\d/.test(body.newPassword)) {
+    return c.json({ error: '新密码需同时包含字母与数字' }, 400)
+  }
+  if (body.newPassword === body.oldPassword) return c.json({ error: '新密码不能与原密码相同' }, 400)
+
+  db.update(tables.users).set({ passwordHash: hashPassword(body.newPassword) }).where(eq(tables.users.id, user.id)).run()
+  // 吊销该用户所有旧令牌（含当前），随后为当前会话签发新令牌
+  bumpTokenEpoch(user.id)
+  const token = await issueToken(user.id)
+  setSessionCookie(c, token)
+  db.insert(tables.auditEvents).values({
+    id: `AE-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+    actor: user.name, action: '修改密码', target: user.account, ip: clientIp(c), createdAt: Date.now(),
+  }).run()
+  return c.json({ ok: true, token })
+})
+
 /** 当前会话用户 */
 authRoutes.get('/me', async (c) => {
   const user = await loadSessionUser(c)

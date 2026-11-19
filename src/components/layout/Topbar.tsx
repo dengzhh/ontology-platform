@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
-import { Bell, ChevronDown, Command, Building2, Sparkles, BadgeCheck, UserRoundCog, LogOut, UserRound, UsersRound, Plus, Loader2, Download, Upload, X, Camera } from 'lucide-react'
+import { Bell, ChevronDown, Command, Building2, Sparkles, BadgeCheck, UserRoundCog, LogOut, UserRound, UsersRound, Plus, Loader2, Download, Upload, X, Camera, KeyRound } from 'lucide-react'
 import { useUI } from '@/store/ui'
 import { Avatar } from '@/components/ui/Misc'
 import { Badge } from '@/components/ui/Badge'
 import ScanCapture from '@/components/ScanCapture'
+import ChangePasswordDialog from '@/components/ChangePasswordDialog'
 import { api, getToken, getSpaceId, setSpaceId } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
 import { cn } from '@/lib/utils'
@@ -31,6 +32,7 @@ export default function Topbar() {
   useEffect(() => { notifQ.reload() }, [notifOpen]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const [userMenuOpen, setUserMenuOpen] = useState(false)
+  const [pwdOpen, setPwdOpen] = useState(false)
   // 身份快切用真实用户名单（替代写死 mock：新建用户也会出现）
   const usersQ = useApi<{ users: { id: string; name: string; account: string; status: string }[] }>(userMenuOpen ? '/users' : null)
   const switchableUsers = (usersQ.data?.users ?? []).filter((u) => u.status === '在职')
@@ -380,6 +382,12 @@ export default function Topbar() {
                   ))}
                   {usersQ.loading && <div className="px-2 py-1.5 text-[11px] text-slate-400">加载用户…</div>}
                 </div>
+                <button
+                  onClick={() => { setUserMenuOpen(false); setPwdOpen(true) }}
+                  className="flex w-full items-center gap-2 border-t border-slate-100 px-4 py-2.5 text-xs text-slate-600 hover:bg-slate-50"
+                >
+                  <KeyRound size={13} /> 修改密码
+                </button>
                 <button onClick={logout} className="flex w-full items-center gap-2 px-4 py-2.5 text-xs text-slate-500 hover:bg-slate-50">
                   <LogOut size={13} /> 退出登录
                 </button>
@@ -388,6 +396,8 @@ export default function Topbar() {
           )}
         </div>
       </div>
+
+      {pwdOpen && <ChangePasswordDialog onClose={() => setPwdOpen(false)} />}
 
       {/* 全局扫描录入弹层：不指定类型，由用户在识别后选择 */}
       {scanOpen && <ScanCapture onClose={() => setScanOpen(false)} onCommitted={() => { /* 入库后各页自行刷新 */ }} />}
