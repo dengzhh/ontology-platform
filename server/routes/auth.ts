@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { eq } from 'drizzle-orm'
 import { db, tables } from '../db'
-import { loadSessionUser, issueToken, setSessionCookie, verifyPassword, buildSessionUser, verifyInviteToken, hashPassword } from '../auth'
+import { loadSessionUser, issueToken, setSessionCookie, clearSessionCookie, verifyPassword, buildSessionUser, verifyInviteToken, hashPassword, bumpTokenEpoch } from '../auth'
 import { clientIp, loginLockedRemaining, recordLoginFail, recordLoginOk } from '../security'
 
 export const authRoutes = new Hono()
@@ -16,6 +16,8 @@ authRoutes.post('/activate', async (c) => {
   if (!row) return c.json({ error: '邀请对应的账号不存在' }, 404)
   db.update(tables.users).set({ passwordHash: hashPassword(password), status: '在职' }).where(eq(tables.users.id, userId)).run()
   db.update(tables.invitations).set({ status: '已激活', activatedAt: Date.now() }).where(eq(tables.invitations.userId, userId)).run()
+  // 激活即设置新密码：吊销该账号此前的所有令牌
+  bumpTokenEpoch(userId)
   db.insert(tables.auditEvents).values({
     id: `AE-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
     actor: row.name, action: '激活账号（邀请链接）', target: row.account, ip: '本地', createdAt: Date.now(),
@@ -64,15 +66,17 @@ authRoutes.get('/me', async (c) => {
   return c.json({ user })
 })
 
-/** 登出（JWT 无状态，前端清除 token；记录审计） */
+/** 登出：递增令牌世代使当前 JWT 立即失效（服务端吊销），并清除会话 cookie */
 authRoutes.post('/logout', async (c) => {
   const user = await loadSessionUser(c)
   if (user) {
+    bumpTokenEpoch(user.id)
     db.insert(tables.auditEvents).values({
       id: `AE-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-      actor: user.name, action: '退出登录', target: user.account, ip: '本地',
+      actor: user.name, action: '退出登录', target: user.account, ip: clientIp(c),
       createdAt: Date.now(),
     }).run()
   }
+  clearSessionCookie(c)
   return c.json({ ok: true })
 })

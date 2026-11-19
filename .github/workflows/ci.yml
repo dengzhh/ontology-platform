@@ -41,8 +41,12 @@ jobs:
           npm run seed
           node demo-data/load.mjs
       - name: 启动服务
+        env:
+          NODE_ENV: production
+          ONTOOS_SECRET: ci-test-secretbox-not-for-production
+          ONTOOS_JWT_SECRET: ci-test-jwt-secret-not-for-production-use
         run: |
-          NODE_ENV=production npx tsx server/index.ts &
+          npx tsx server/index.ts &
           for i in $(seq 1 40); do
             if curl -sf http://127.0.0.1:5000/api/health > /dev/null; then echo "服务已就绪"; break; fi
             sleep 1

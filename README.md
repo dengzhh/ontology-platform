@@ -106,7 +106,8 @@ node demo-data/load.mjs                 # 期望：通过 118/118
 
 ```bash
 npm ci && npm run build
-export ONTOOS_SECRET="$(openssl rand -base64 32)"   # 密钥加密主密钥，必须备份保管
+export ONTOOS_SECRET="$(openssl rand -base64 32)"       # 密钥加密主密钥，必须备份保管
+export ONTOOS_JWT_SECRET="$(openssl rand -base64 32)"   # 登录令牌签名密钥，生产必填
 export NODE_ENV=production
 npm run start             # http://localhost:5000（前端与管理端同端口）
 
@@ -228,7 +229,7 @@ tests/ · demo-data/            # 冒烟/契约/清单/E2E 剧本/扫描素材 �
 ## 路线图
 
 - ✅ **v1.0.0（当前）**：42 应用全 live；智能助手 22 工具 + ChatBI（趋势/环比同比/TOP-N/交叉/主动澄清）；语义层；多空间；外部数据源；10 万行级性能验证
-- ✅ **v1.1.0 生产就绪**：单端口生产部署（Docker / systemd）· 备份与恢复演练 · 登录防爆破 + 分级限流 · 密钥静态加密（AES-256-GCM）· 安全响应头/CSP/HSTS · 结构化日志与前端异常上报 · GitHub Actions CI
+- ✅ **v1.1.0 生产就绪**：单端口生产部署（Docker / systemd）· 备份与恢复演练 · 登录防爆破 + 分级限流 · JWT 令牌服务端吊销（登出/改密/停用即失效）· 密钥静态加密（AES-256-GCM）· 安全响应头/CSP/HSTS · 结构化日志与前端异常上报 · GitHub Actions CI
 - 🔜 计划中：PostgreSQL/pgvector 适配 · OIDC/SSO · 流式时序采集 · 更多数据连接器（PG/MySQL/Kafka）· 查询管道实时掩码 · 对象存储 V2
 
 ## 说明

@@ -11,6 +11,8 @@ services:
       PORT: 5000
       # 必填：密钥加密主密钥（≥32 位随机串，生成：openssl rand -base64 32）
       ONTOOS_SECRET: ${ONTOOS_SECRET:?必须设置 ONTOOS_SECRET}
+      # 必填：登录令牌签名密钥（缺失或使用仓库默认值时生产拒绝启动）
+      ONTOOS_JWT_SECRET: ${ONTOOS_JWT_SECRET:?必须设置 ONTOOS_JWT_SECRET}
       # 置于反向代理（Nginx/Traefik）之后时设为 1，限流按真实客户端 IP
       TRUST_PROXY: ${TRUST_PROXY:-0}
     volumes:

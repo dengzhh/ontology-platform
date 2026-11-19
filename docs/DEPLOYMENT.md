@@ -28,19 +28,23 @@ cd ontology-platform
 ### 2. 生成主密钥（**必做，且必须备份**）
 
 ```bash
-openssl rand -base64 32
+openssl rand -base64 32   # ONTOOS_SECRET：密钥加密主密钥
+openssl rand -base64 32   # ONTOOS_JWT_SECRET：登录令牌签名密钥
 ```
 
 写入 `.env`（与 `docker-compose.yml` 同级）：
 
 ```bash
-ONTOOS_SECRET=<上一步生成的值>
+ONTOOS_SECRET=<第一个随机值>
+ONTOOS_JWT_SECRET=<第二个随机值>
 ONTOOS_PORT=5000
 # 置于反向代理之后时设为 1，限流按真实客户端 IP 计算
 TRUST_PROXY=1
 ```
 
 > ⚠️ **`ONTOOS_SECRET` 用于加密数据库中保存的第三方 API 密钥。丢失该值后，已保存的 AI/视觉/嵌入密钥将无法解密，需要重新填写。请务必纳入密码管理系统。**
+>
+> ⚠️ **`ONTOOS_JWT_SECRET` 用于签发登录令牌。生产模式未设置或仍使用仓库默认值时，服务拒绝启动**（默认值公开在源码中，任何人都能据此伪造管理员身份）。更换该密钥会使所有用户需重新登录。
 
 ### 3. 启动
 
@@ -210,6 +214,8 @@ systemctl start ontoos
 |---|---|
 | 登录防爆破 | 同账号+IP 连续失败 5 次锁 15 分钟，失败尝试写审计 |
 | 分级限流 | 全局 600 次/分/IP，登录 20 次/分/IP，手机会话 120 次/分/IP |
+| 令牌服务端吊销 | JWT 内嵌令牌世代（epoch）；**登出、改密、管理员重置密码、停用账号**即递增世代，该用户全部已签发令牌立即失效（无需等 7 天过期） |
+| JWT 签名密钥 | 生产强制 `ONTOOS_JWT_SECRET`，缺失或使用仓库默认值时拒绝启动 |
 | 密钥静态加密 | AI/视觉/嵌入密钥以 AES-256-GCM 加密存库，主密钥来自 `ONTOOS_SECRET`；接口回显脱敏 |
 | 安全响应头 | `X-Frame-Options: DENY`、`nosniff`、`Referrer-Policy`、`Permissions-Policy`，生产另加 HSTS + CSP |
 | 手机会话令牌 | 96 位随机（不可预测），10 分钟有效，一次性流转 |
@@ -218,12 +224,25 @@ systemctl start ontoos
 
 ### 上线检查清单
 
-- [ ] `ONTOOS_SECRET` 已设置并纳入密码管理（**未设置时生产模式拒绝启动**）
+- [ ] `ONTOOS_SECRET` 与 `ONTOOS_JWT_SECRET` 均已设置并纳入密码管理（**任一未设置时生产模式拒绝启动**）
 - [ ] 反向代理已终结 TLS，`TRUST_PROXY=1` 已设置
 - [ ] 初始管理员密码已修改，默认演示账号已停用/改密
 - [ ] 定时备份已配置并**至少完成一次恢复演练**
 - [ ] 服务端日志已接入日志平台（生产为 JSON 行，字段 `t/method/path/status/ms`）
 - [ ] 若使用外部 AI 网关，已确认其数据留存政策（票据图片会发往该网关）
+
+### 令牌吊销说明
+
+平台已实现 JWT 服务端吊销，运维需知道以下行为：
+
+| 操作 | 影响 |
+|---|---|
+| 用户主动登出 | 仅该用户当前浏览器会话失效（该用户名下所有已签发令牌同时失效） |
+| 管理员重置某用户密码 | 该用户全部会话立即失效，需重新登录 |
+| 管理员停用账号 | 该用户全部会话立即失效，且无法再登录 |
+| 更换 `ONTOOS_JWT_SECRET` | **全平台**所有用户需重新登录（应急手段） |
+
+令牌默认有效期 7 天。如需缩短，调整 `server/auth.ts` 中的 `TOKEN_TTL` 后重新构建。
 
 ---
 

@@ -7,9 +7,51 @@ import { eq } from 'drizzle-orm'
 import { db, tables } from './db'
 import type { SessionUser, SessionRole } from '../shared/types'
 
-const JWT_SECRET = process.env.ONTOOS_JWT_SECRET || 'ontoos-dev-secret-change-in-prod'
+const DEV_JWT_SECRET = 'ontoos-dev-secret-change-in-prod'
+const JWT_SECRET = process.env.ONTOOS_JWT_SECRET || DEV_JWT_SECRET
 const TOKEN_TTL = 7 * 24 * 3600 // 7 天
 const COOKIE = 'ontoos_token'
+
+/**
+ * 生产模式必须显式配置 JWT 签名密钥：默认值公开在仓库里，任何人都能伪造管理员令牌。
+ * （启动早期调用，缺失直接退出，避免“能跑但等于没有鉴权”）
+ */
+export function assertJwtSecret(isProd: boolean) {
+  if (!isProd) return
+  if (!process.env.ONTOOS_JWT_SECRET || process.env.ONTOOS_JWT_SECRET === DEV_JWT_SECRET) {
+    console.error('[ontoos] 启动中止：生产模式必须设置环境变量 ONTOOS_JWT_SECRET（≥32 位随机串，且不能使用默认开发值）')
+    process.exit(1)
+  }
+}
+
+/**
+ * 令牌世代（token epoch）：JWT 内嵌 `ep`，与用户当前世代比对。
+ * 登出 / 改密 / 停用 / 重置密码时递增世代 → 该用户名下所有已签发令牌立即失效。
+ * 存储复用 settings 表（key=`token_epoch:<userId>`），不引入主表迁移。
+ */
+function epochKey(userId: string) {
+  return `token_epoch:${userId}`
+}
+
+export function tokenEpoch(userId: string): number {
+  const row = db.select().from(tables.settings).where(eq(tables.settings.key, epochKey(userId))).get()
+  const v = row?.value as { epoch?: number } | undefined
+  return Number(v?.epoch ?? 0)
+}
+
+/** 递增世代：使该用户已签发的所有 JWT 失效（返回新世代） */
+export function bumpTokenEpoch(userId: string): number {
+  const next = tokenEpoch(userId) + 1
+  const key = epochKey(userId)
+  const now = Date.now()
+  const existing = db.select().from(tables.settings).where(eq(tables.settings.key, key)).get()
+  if (existing) {
+    db.update(tables.settings).set({ value: { epoch: next }, updatedAt: now }).where(eq(tables.settings.key, key)).run()
+  } else {
+    db.insert(tables.settings).values({ key, value: { epoch: next }, updatedAt: now }).run()
+  }
+  return next
+}
 
 export function hashPassword(plain: string): string {
   return bcrypt.hashSync(plain, 10)
@@ -20,7 +62,11 @@ export function verifyPassword(plain: string, hash: string): boolean {
 }
 
 export async function issueToken(userId: string): Promise<string> {
-  return sign({ sub: userId, exp: Math.floor(Date.now() / 1000) + TOKEN_TTL }, JWT_SECRET, 'HS256')
+  return sign(
+    { sub: userId, ep: tokenEpoch(userId), exp: Math.floor(Date.now() / 1000) + TOKEN_TTL },
+    JWT_SECRET,
+    'HS256',
+  )
 }
 
 /** 邀请令牌（7 天有效，仅用于激活） */
@@ -87,8 +133,11 @@ export async function loadSessionUser(c: Context): Promise<SessionUser | null> {
   // API 密钥（JWT 不可能以 ontoos_ 开头）
   if (bearer.startsWith('ontoos_')) return loadApiKeyUser(bearer, c.req.method)
   try {
-    const payload = (await verify(bearer, JWT_SECRET, 'HS256')) as { sub?: string }
+    const payload = (await verify(bearer, JWT_SECRET, 'HS256')) as { sub?: string; ep?: number }
     if (!payload?.sub) return null
+    // 世代校验：登出/改密/停用后旧令牌立即失效（历史令牌无 ep 视为 0，与初始世代一致）
+    const ep = Number(payload.ep ?? 0)
+    if (ep !== tokenEpoch(payload.sub)) return null
     const user = buildSessionUser(payload.sub)
     if (!user || user.status !== '在职') return null
     return user
@@ -99,6 +148,10 @@ export async function loadSessionUser(c: Context): Promise<SessionUser | null> {
 
 export function setSessionCookie(c: Context, token: string) {
   setCookie(c, COOKIE, token, { httpOnly: false, sameSite: 'Lax', path: '/', maxAge: TOKEN_TTL })
+}
+
+export function clearSessionCookie(c: Context) {
+  setCookie(c, COOKIE, '', { httpOnly: false, sameSite: 'Lax', path: '/', maxAge: 0 })
 }
 
 /** 要求已登录；把 user 挂到 context */

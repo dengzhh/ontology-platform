@@ -49,6 +49,14 @@ export async function api<T>(path: string, opts: { method?: string; body?: unkno
   }
   if (!res.ok) {
     const msg = (data as { error?: string })?.error ?? `请求失败（${res.status}）`
+    // 会话失效（令牌过期 / 已登出 / 被管理员停用）：清理本地态并回到登录页
+    // 登录接口自身的 401 不跳转，交给登录表单展示「账号或密码错误」
+    if (res.status === 401 && !path.startsWith('/auth/login') && getToken()) {
+      clearToken()
+      if (!location.pathname.startsWith('/login')) {
+        location.href = `/login?expired=1&next=${encodeURIComponent(location.pathname + location.search)}`
+      }
+    }
     throw new ApiError(msg, res.status)
   }
   return data as T

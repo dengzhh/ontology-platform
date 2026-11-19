@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { eq } from 'drizzle-orm'
 import { db, tables } from '../db'
-import { requireAuth, requireAdmin, hashPassword, issueInviteToken } from '../auth'
+import { requireAuth, requireAdmin, hashPassword, issueInviteToken, bumpTokenEpoch } from '../auth'
 import { isSmtpConfigured, sendMail } from '../mailer'
 import type { SessionUser, UserRow } from '../../shared/types'
 
@@ -146,6 +146,8 @@ userRoutes.patch('/:id', requireAdmin, async (c) => {
   if (patch.dept !== undefined) set.dept = patch.dept
   if (patch.resetPassword) set.passwordHash = hashPassword('ontos@2026')
   if (Object.keys(set).length > 0) db.update(tables.users).set(set).where(eq(tables.users.id, id)).run()
+  // 重置密码或停用账号：吊销该用户所有已签发令牌（旧会话立即失效）
+  if (patch.resetPassword || (patch.status && patch.status !== '在职')) bumpTokenEpoch(id)
 
   const actor = c.get('user')
   db.insert(tables.auditEvents).values({
