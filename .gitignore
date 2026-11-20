@@ -4,7 +4,8 @@ dist/
 dist-server/
 
 # 本地数据（含真实账号与 AI 网关密钥配置，严禁入库）
-data/
+# 注意：必须锚定到仓库根目录，否则会误伤 src/pages/data/ 等源码目录
+/data/
 *.db
 *.db-shm
 *.db-wal
