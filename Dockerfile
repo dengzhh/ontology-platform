@@ -30,6 +30,9 @@ COPY --from=build /app/dist ./dist
 COPY --from=build /app/dist-server ./dist-server
 COPY server ./server
 COPY shared ./shared
+# 种子数据来源：server/seed.ts 通过 tsx 直接运行，import '../src/mocks/*'
+# （仅需 mock 数据目录，不含前端页面；缺此项时容器内 seed 报 ERR_MODULE_NOT_FOUND）
+COPY --from=build /app/src/mocks ./src/mocks
 # 迁移文件：启动时 ensureMigrated() 读取 ./drizzle 建表（缺此项新库无法启动）
 COPY drizzle ./drizzle
 # 初始化数据所需：装载脚本与演示素材（部署后执行 seed/load 用）

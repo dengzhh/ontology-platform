@@ -8,6 +8,7 @@ import { ROLES, USERS, USER_GROUPS } from '../src/mocks/identity'
 import { OBJECT_TYPES, LINK_TYPES, ACTION_TYPES, CUSTOMER_ROWS, ORDER_ROWS, DEVICE_ROWS, TICKET_ROWS, FACTORY_ROWS } from '../src/mocks/ontology'
 import { APPROVALS, AUDIT_EVENTS, PIPELINE_RUNS } from '../src/mocks/activity'
 import { KNOWLEDGE_DOCS } from '../src/mocks/knowledge'
+import { PACKS } from './templates/packs'
 
 const now = Date.now()
 const slug = (s: string) => s.replace(/\s+/g, '-').toLowerCase()
@@ -53,6 +54,54 @@ function seedIdentity() {
       if (uid) db.insert(tables.groupMembers).values({ groupId: gid, userId: uid }).run()
     }
   })
+  // 个人空间 + 生活模板包：消费/收入等类型只在个人空间，缺此项时个人空间相关功能为空
+  seedPersonalSpace()
+}
+
+/** 陈星野的个人空间（含 personal-life 模板包：支出/收入/账户/联系人等） */
+function seedPersonalSpace() {
+  const PERSONAL = 'sp-personal-U-0001'
+  const owner = USERS.find((u) => u.account === 'chen.xingye')
+  if (!owner) return
+  const exists = db.select().from(tables.spaces).all().some((s) => s.id === PERSONAL)
+  if (!exists) {
+    db.insert(tables.spaces).values({
+      id: PERSONAL, name: `${owner.name}的个人空间`, kind: 'personal',
+      ownerId: owner.id, templatePack: 'personal-life', createdAt: now,
+    }).run()
+  }
+  const hasMember = db.select().from(tables.spaceMembers).all().some((m) => m.spaceId === PERSONAL && m.userId === owner.id)
+  if (!hasMember) {
+    db.insert(tables.spaceMembers).values({ spaceId: PERSONAL, userId: owner.id, role: 'owner' }).run()
+  }
+  const pack = PACKS.find((p) => p.id === 'personal-life')
+  if (!pack) return
+  for (const t of pack.types) {
+    const has = db.select().from(tables.objectTypes).all().some((x) => x.id === t.id && x.spaceId === PERSONAL)
+    if (has) continue
+    db.insert(tables.objectTypes).values({
+      id: t.id, apiName: t.id, name: t.name, desc: t.desc, color: t.color, icon: t.icon,
+      primaryKey: t.properties[0]?.name ?? 'id', properties: t.properties, viewTemplate: t.viewTemplate,
+      spaceId: PERSONAL, createdAt: now, updatedAt: now,
+    }).run()
+  }
+  for (const l of pack.links) {
+    const has = db.select().from(tables.linkTypes).all().some((x) => x.id === l.id && x.spaceId === PERSONAL)
+    if (has) continue
+    db.insert(tables.linkTypes).values({
+      id: l.id, name: l.name, sourceTypeId: l.source, targetTypeId: l.target,
+      cardinality: l.cardinality, desc: l.desc, spaceId: PERSONAL, createdAt: now,
+    }).run()
+  }
+  for (const a of pack.actions) {
+    const has = db.select().from(tables.actionTypes).all().some((x) => x.id === a.id && x.spaceId === PERSONAL)
+    if (has) continue
+    db.insert(tables.actionTypes).values({
+      id: a.id, name: a.name, targetTypeId: a.target, params: a.params, effect: a.effect,
+      needsApproval: a.needsApproval ? 1 : 0, desc: a.desc, spaceId: PERSONAL, createdAt: now,
+    }).run()
+  }
+  console.log(`[seed] 个人空间就绪：${PERSONAL}（personal-life 模板包）`)
 }
 
 function seedOntology() {
@@ -176,23 +225,32 @@ function seedSettings() {
   }).run()
 }
 
-wipe()
-seedIdentity()
-seedOntology()
-seedObjects()
-seedGovernance()
-seedKnowledge()
-seedSettings()
+/** 执行种子写入（清空后重建，幂等）。供 CLI 与服务启动时按需调用 */
+export function runSeed() {
+  wipe()
+  seedIdentity()
+  seedOntology()
+  seedObjects()
+  seedGovernance()
+  seedKnowledge()
+  seedSettings()
 
-const counts = {
-  users: db.select().from(tables.users).all().length,
-  roles: db.select().from(tables.roles).all().length,
-  objectTypes: db.select().from(tables.objectTypes).all().length,
-  linkTypes: db.select().from(tables.linkTypes).all().length,
-  actionTypes: db.select().from(tables.actionTypes).all().length,
-  objects: db.select().from(tables.objects).all().length,
-  links: db.select().from(tables.objectLinks).all().length,
-  documents: db.select().from(tables.documents).all().length,
+  const counts = {
+    users: db.select().from(tables.users).all().length,
+    roles: db.select().from(tables.roles).all().length,
+    objectTypes: db.select().from(tables.objectTypes).all().length,
+    linkTypes: db.select().from(tables.linkTypes).all().length,
+    actionTypes: db.select().from(tables.actionTypes).all().length,
+    objects: db.select().from(tables.objects).all().length,
+    links: db.select().from(tables.objectLinks).all().length,
+    documents: db.select().from(tables.documents).all().length,
+  }
+  console.log('[seed] 完成：', counts)
+  console.log('[seed] 默认账号：chen.xingye / ontos@2026（所有演示账号同密码）')
+  return counts
 }
-console.log('[seed] 完成：', counts)
-console.log('[seed] 默认账号：chen.xingye / ontos@2026（所有演示账号同密码）')
+
+// 直接执行：npx tsx server/seed.ts
+if (process.argv[1]?.includes('seed')) {
+  runSeed()
+}

@@ -64,6 +64,24 @@ assertJwtSecret(isProd)
 // 幂等迁移：新部署首次启动自动建表（否则下面 migrateSecrets 查询 settings 会报 no such table）
 ensureMigrated()
 
+// 空库自动初始化演示数据（首个部署即可直接登录体验）
+// 仅在 users 表为空时触发；设置 AUTO_SEED=false 可关闭（生产环境接真实数据时建议关闭）
+if (process.env.AUTO_SEED !== 'false') {
+  const userCount = (sqlite.prepare('SELECT count(*) AS c FROM users').get() as { c: number }).c
+  if (userCount === 0) {
+    console.log('[ontoos] 检测到空库，正在写入演示数据（可通过 AUTO_SEED=false 关闭）…')
+    try {
+      // 同步加载：生产产物为 CommonJS，不能使用顶层 await
+      const { createRequire } = require('node:module') as typeof import('node:module')
+      const req = createRequire(__filename)
+      const { runSeed } = req('./seed') as typeof import('./seed')
+      runSeed()
+    } catch (e) {
+      console.error('[ontoos] 自动初始化失败（不影响服务启动，可稍后手动执行 npm run seed）：', e instanceof Error ? e.message : e)
+    }
+  }
+}
+
 // 历史明文密钥一次性加密（幂等）
 migrateSecrets()
 
