@@ -80,6 +80,13 @@ ChatBI 对话内出图并**自动选择图表形态**：时间趋势 → 折线�
 
 ## 快速开始
 
+**前置要求**：Node.js 22+（推荐 22 LTS）。
+
+> **Windows 用户注意**：`better-sqlite3` 是原生模块，若无预编译包会回退源码编译，需要
+> **Visual Studio Build Tools**（勾选「使用 C++ 的桌面开发」）与 Python 3。
+> 若 `npm install` 报 `gyp ERR! find VS`，请先安装上述工具，或改用 WSL / Docker 运行
+> （Docker 可完全绕过此问题，见 [部署手册](./docs/DEPLOYMENT.md)）。
+
 ```bash
 git clone https://github.com/dengzhh/ontology-platform.git && cd ontology-platform
 npm install              # 首次
@@ -90,11 +97,11 @@ npm run dev              # 一条命令启动全栈：前端 http://localhost:51
 
 **默认账号**：`chen.xingye / ontos@2026`（平台管理员；另有维修工程师/计划员/审计员演示账号，登录页可一键填入）
 
-**可选：一键装载全功能验证数据**（幂等，118 项断言）
+**可选：一键装载全功能验证数据**（幂等，120 项断言）
 
 ```bash
 python demo-data/build_external_db.py   # 生成独立外部 SQLite 演示库（4 表 / 120 行）
-node demo-data/load.mjs                 # 期望：通过 118/118
+node demo-data/load.mjs                 # 期望：通过 120/120
 ```
 
 装载后按 `demo-data/FEATURE-MATRIX.md` 的 42 页验证矩阵逐页体验。清理验证数据：`node demo-data/load.mjs --clean`。

@@ -1,0 +1,82 @@
+name: Issue 通知
+
+# 新开 issue / 重新打开 issue / issue 有新评论时，邮件通知维护者
+on:
+  issues:
+    types: [opened, reopened]
+  issue_comment:
+    types: [created]
+
+jobs:
+  notify:
+    # 忽略仓库所有者自己的评论（避免自通知）
+    if: |
+      github.event_name == 'issues' ||
+      (github.event_name == 'issue_comment' && github.event.comment.user.login != github.repository_owner)
+    runs-on: ubuntu-latest
+    steps:
+      - name: 组装邮件正文
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REPO: ${{ github.repository }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          ISSUE_URL: ${{ github.event.issue.html_url }}
+          ISSUE_BODY: ${{ github.event.issue.body }}
+          ISSUE_AUTHOR: ${{ github.event.issue.user.login }}
+          ISSUE_LABELS: ${{ join(github.event.issue.labels.*.name, ', ') }}
+          COMMENT_BODY: ${{ github.event.comment.body }}
+          COMMENT_AUTHOR: ${{ github.event.comment.user.login }}
+          COMMENT_URL: ${{ github.event.comment.html_url }}
+        run: |
+          python3 - <<'PY'
+          import os
+
+          ev = os.environ.get("EVENT_NAME", "")
+          body = (os.environ.get("ISSUE_BODY") or "").strip()
+          cbody = (os.environ.get("COMMENT_BODY") or "").strip()
+
+          def clip(s, n=2000):
+              return s if len(s) <= n else s[:n] + "\n…（内容过长，请点击链接查看全文）"
+
+          if ev == "issues":
+              lines = [
+                  f"仓库：{os.environ.get('REPO','')}",
+                  f"标题：{os.environ.get('ISSUE_TITLE','(无标题)')}",
+                  f"作者：{os.environ.get('ISSUE_AUTHOR','')}",
+                  f"编号：#{os.environ.get('ISSUE_NUMBER','')}",
+                  f"标签：{os.environ.get('ISSUE_LABELS') or '（无）'}",
+                  f"链接：{os.environ.get('ISSUE_URL','')}",
+                  "",
+                  "──── 正文 ────",
+                  clip(body) or "（无正文）",
+              ]
+          else:
+              lines = [
+                  f"仓库：{os.environ.get('REPO','')}",
+                  f"Issue：#{os.environ.get('ISSUE_NUMBER','')} {os.environ.get('ISSUE_TITLE','')}",
+                  f"评论者：{os.environ.get('COMMENT_AUTHOR','')}",
+                  f"链接：{os.environ.get('COMMENT_URL','')}",
+                  "",
+                  "──── 评论内容 ────",
+                  clip(cbody) or "（无内容）",
+              ]
+
+          with open("mail_body.txt", "w", encoding="utf-8") as f:
+              f.write("\n".join(lines))
+          print("\n".join(lines))
+          PY
+
+      - name: 发送邮件
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.126.com
+          server_port: 465
+          secure: true
+          username: ${{ secrets.MAIL_USERNAME }}
+          password: ${{ secrets.MAIL_PASSWORD }}
+          to: ${{ secrets.MAIL_TO }}
+          from: OntoOS Issue Bot <${{ secrets.MAIL_USERNAME }}>
+          subject: ${{ github.event_name == 'issues' && format('[{0}] 新 Issue #{1}: {2}', github.repository, github.event.issue.number, github.event.issue.title) || format('[{0}] Issue #{1} 新评论（{2}）', github.repository, github.event.issue.number, github.event.comment.user.login) }}
+          body: file://mail_body.txt
+          convert_markdown: false
