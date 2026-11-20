@@ -52,6 +52,8 @@ jobs:
         run: npm run build:server
       - name: 初始化数据库（seed 需要先建表）
         run: npm run db:migrate && npm run seed
+      - name: 生成外部演示库（外部数据源相关断言依赖）
+        run: python3 demo-data/build_external_db.py
       - name: 启动服务
         env:
           NODE_ENV: production
