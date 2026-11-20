@@ -9,10 +9,8 @@ on:
 
 jobs:
   notify:
-    # 忽略仓库所有者自己的评论（避免自通知）
-    if: |
-      github.event_name == 'issues' ||
-      (github.event_name == 'issue_comment' && github.event.comment.user.login != github.repository_owner)
+    # 只在 issue 事件触发；忽略仓库所有者自己的评论（避免自通知）
+    if: github.event_name == 'issues' || (github.event_name == 'issue_comment' && github.event.comment.user.login != github.repository_owner)
     runs-on: ubuntu-latest
     steps:
       - name: 组装邮件正文
@@ -41,31 +39,47 @@ jobs:
 
           if ev == "issues":
               lines = [
-                  f"仓库：{os.environ.get('REPO','')}",
-                  f"标题：{os.environ.get('ISSUE_TITLE','(无标题)')}",
-                  f"作者：{os.environ.get('ISSUE_AUTHOR','')}",
-                  f"编号：#{os.environ.get('ISSUE_NUMBER','')}",
-                  f"标签：{os.environ.get('ISSUE_LABELS') or '（无）'}",
-                  f"链接：{os.environ.get('ISSUE_URL','')}",
+                  "仓库：" + os.environ.get("REPO", ""),
+                  "标题：" + os.environ.get("ISSUE_TITLE", "(无标题)"),
+                  "作者：" + os.environ.get("ISSUE_AUTHOR", ""),
+                  "编号：#" + os.environ.get("ISSUE_NUMBER", ""),
+                  "标签：" + (os.environ.get("ISSUE_LABELS") or "（无）"),
+                  "链接：" + os.environ.get("ISSUE_URL", ""),
                   "",
                   "──── 正文 ────",
                   clip(body) or "（无正文）",
               ]
+              subject = "[%s] 新 Issue #%s: %s" % (
+                  os.environ.get("REPO", ""),
+                  os.environ.get("ISSUE_NUMBER", ""),
+                  os.environ.get("ISSUE_TITLE", "(无标题)"),
+              )
           else:
               lines = [
-                  f"仓库：{os.environ.get('REPO','')}",
-                  f"Issue：#{os.environ.get('ISSUE_NUMBER','')} {os.environ.get('ISSUE_TITLE','')}",
-                  f"评论者：{os.environ.get('COMMENT_AUTHOR','')}",
-                  f"链接：{os.environ.get('COMMENT_URL','')}",
+                  "仓库：" + os.environ.get("REPO", ""),
+                  "Issue：#%s %s" % (os.environ.get("ISSUE_NUMBER", ""), os.environ.get("ISSUE_TITLE", "")),
+                  "评论者：" + os.environ.get("COMMENT_AUTHOR", ""),
+                  "链接：" + os.environ.get("COMMENT_URL", ""),
                   "",
                   "──── 评论内容 ────",
                   clip(cbody) or "（无内容）",
               ]
+              subject = "[%s] Issue #%s 新评论（%s）" % (
+                  os.environ.get("REPO", ""),
+                  os.environ.get("ISSUE_NUMBER", ""),
+                  os.environ.get("COMMENT_AUTHOR", ""),
+              )
 
           with open("mail_body.txt", "w", encoding="utf-8") as f:
               f.write("\n".join(lines))
-          print("\n".join(lines))
+          with open("mail_subject.txt", "w", encoding="utf-8") as f:
+              f.write(subject)
+          print(subject)
           PY
+
+      - name: 读取邮件标题
+        id: subject
+        run: echo "value=$(cat mail_subject.txt)" >> "$GITHUB_OUTPUT"
 
       - name: 发送邮件
         uses: dawidd6/action-send-mail@v3
@@ -77,6 +91,6 @@ jobs:
           password: ${{ secrets.MAIL_PASSWORD }}
           to: ${{ secrets.MAIL_TO }}
           from: OntoOS Issue Bot <${{ secrets.MAIL_USERNAME }}>
-          subject: ${{ github.event_name == 'issues' && format('[{0}] 新 Issue #{1}: {2}', github.repository, github.event.issue.number, github.event.issue.title) || format('[{0}] Issue #{1} 新评论（{2}）', github.repository, github.event.issue.number, github.event.comment.user.login) }}
+          subject: ${{ steps.subject.outputs.value }}
           body: file://mail_body.txt
           convert_markdown: false

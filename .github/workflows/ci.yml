@@ -25,6 +25,10 @@ jobs:
       - name: 服务端编译（生产运行产物）
         run: npm run build:server
       - name: 校验生产启动产物（纯 node，无 tsx 运行时）
+        env:
+          # 生产模式强制要求这两个密钥（安全设计），CI 用一次性测试值
+          ONTOOS_SECRET: ci-test-secretbox-not-for-production-use-only
+          ONTOOS_JWT_SECRET: ci-test-jwt-secret-not-for-production-use-only
         run: |
           PORT=5055 NODE_ENV=production node dist-server/server/index.js &
           for i in $(seq 1 30); do
@@ -34,7 +38,7 @@ jobs:
           echo "生产产物启动失败"; exit 1
 
   smoke:
-    name: 冒烟测试（187 项黑盒断言）
+    name: 冒烟测试（204 项黑盒断言）
     runs-on: ubuntu-latest
     needs: quality
     steps:
@@ -44,25 +48,25 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - name: 初始化数据（种子 + 演示数据装载）
-        run: |
-          npm run seed
-          node demo-data/load.mjs
+      - name: 服务端编译
+        run: npm run build:server
+      - name: 初始化数据库（seed 需要先建表）
+        run: npm run db:migrate && npm run seed
       - name: 启动服务
         env:
           NODE_ENV: production
           ONTOOS_SECRET: ci-test-secretbox-not-for-production
           ONTOOS_JWT_SECRET: ci-test-jwt-secret-not-for-production-use
         run: |
-          npm run build:server
           node dist-server/server/index.js &
           for i in $(seq 1 40); do
             if curl -sf http://127.0.0.1:5000/api/health > /dev/null; then echo "服务已就绪"; break; fi
             sleep 1
           done
+      - name: 装载演示数据（走 HTTP API，需服务先启动）
+        run: node demo-data/load.mjs
       - name: 运行冒烟
         env:
-          ONTOOS_SECRET: ci-test-secret-not-for-production-use-only
           BASE: http://127.0.0.1:5000
         run: node tests/smoke.mjs
       - name: 上传测试报告
