@@ -117,11 +117,22 @@ export ONTOOS_SECRET="$(openssl rand -base64 32)"       # 密钥加密主密钥�
 export ONTOOS_JWT_SECRET="$(openssl rand -base64 32)"   # 登录令牌签名密钥，生产必填
 export NODE_ENV=production
 npm run start             # 纯 node 运行，不依赖 tsx：http://localhost:5000
+```
 
-# 或 Docker
+**Docker（二选一）**
+
+```bash
+# 方式一：直接拉取官方构建的镜像（免构建，支持 amd64/arm64）
+docker pull ghcr.io/dengzhh/ontology-platform:latest
+
+# 方式二：本地构建
 docker compose up -d --build
+
+# 首次启动后初始化数据（容器会自动建表，但账号与空间需 seed）
 docker compose exec ontoos npx tsx server/seed.ts
 ```
+
+> 镜像地址：`ghcr.io/dengzhh/ontology-platform`（标签：`latest`、`v1.2.3`、`sha-xxxxxxx`）
 
 **备份与恢复（VACUUM INTO 在线快照，不必停服）**
 

@@ -1,22 +1,29 @@
 # OntoOS 生产镜像：多阶段构建（构建前端与服务端 → 运行端仅带产物与运行依赖）
 # 用法：docker compose up -d
+#
+# 多架构支持：linux/amd64 + linux/arm64（CI 用 buildx 交叉构建）
 
 FROM node:22-bookworm-slim AS build
 WORKDIR /app
-# better-sqlite3 需要编译工具链（prebuild 不可用时回退源码编译）
+# better-sqlite3 是原生模块：prebuild 不可用时回退源码编译，需要工具链
 RUN apt-get update && apt-get install -y --no-install-recommends python3 make g++ && rm -rf /var/lib/apt/lists/*
 COPY package*.json ./
 RUN npm ci
 COPY . .
 # 前端产物 → dist/；服务端 TypeScript → dist-server/（CommonJS，运行时不需要 tsx）
 RUN npm run build && npm run build:server && npm run typecheck:server
+# 剔除 devDependencies，只留生产依赖（与编译好的原生模块一并保留）
+RUN npm prune --omit=dev
 
 FROM node:22-bookworm-slim AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
-# 仅生产依赖（tsx 已列为运行时依赖，seed/migrate/backup 脚本可用）
+
+# 直接复用 build 阶段裁剪后的 node_modules：
+#   - better-sqlite3 的 .node 二进制已在本阶段编译完成，runtime 无需 Python/编译器
+#   - 避免 runtime 再次 npm ci 触发源码编译（这是此前镜像构建失败的原因）
+COPY --from=build /app/node_modules ./node_modules
 COPY package*.json ./
-RUN npm ci --omit=dev && npm cache clean --force
 
 # 构建产物与运行时源码
 COPY --from=build /app/dist ./dist
