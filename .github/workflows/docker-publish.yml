@@ -41,9 +41,11 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            # main 分支 → latest
+            # main 分支 → latest（默认拉取的就是最新主线构建）
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' }}
+            # main 分支 → main（保留分支名标签便于回溯）
             type=ref,event=branch
-            # 版本 tag v1.2.3 → 1.2.3 / 1.2 / latest
+            # 版本 tag v1.2.3 → 1.2.3 / 1.2 / 1
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=semver,pattern={{major}}
