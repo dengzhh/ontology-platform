@@ -1,5 +1,7 @@
 services:
   ontoos:
+    # 本地构建；若想直接用官方镜像，注释掉 build 并把 image 改为：
+    #   ghcr.io/dengzhh/ontology-platform:latest
     build: .
     image: ontoos-platform:latest
     container_name: ontoos
@@ -15,6 +17,9 @@ services:
       ONTOOS_JWT_SECRET: ${ONTOOS_JWT_SECRET:?必须设置 ONTOOS_JWT_SECRET}
       # 置于反向代理（Nginx/Traefik）之后时设为 1，限流按真实客户端 IP
       TRUST_PROXY: ${TRUST_PROXY:-0}
+      # 空库首次启动自动写入演示数据（chen.xingye / ontos@2026）；
+      # 正式部署接真实数据时在 .env 中设 AUTO_SEED=false 关闭
+      AUTO_SEED: ${AUTO_SEED:-true}
     volumes:
       - ontoos-data:/app/data
     healthcheck:

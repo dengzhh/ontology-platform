@@ -40,6 +40,8 @@ ONTOOS_JWT_SECRET=<第二个随机值>
 ONTOOS_PORT=5000
 # 置于反向代理之后时设为 1，限流按真实客户端 IP 计算
 TRUST_PROXY=1
+# 可选：正式部署接真实数据时关闭演示数据自动写入（默认开启）
+# AUTO_SEED=false
 ```
 
 > ⚠️ **`ONTOOS_SECRET` 用于加密数据库中保存的第三方 API 密钥。丢失该值后，已保存的 AI/视觉/嵌入密钥将无法解密，需要重新填写。请务必纳入密码管理系统。**
@@ -54,21 +56,21 @@ docker compose logs -f ontoos    # 观察启动日志
 curl http://localhost:5000/api/health
 ```
 
-**首次部署必须初始化数据**（容器启动已自动建表，但账号与空间需 seed 创建）：
+**数据初始化（v1.1.1 镜像起为自动）**：容器首次启动检测到空库时，会自动建表并写入
+演示数据（角色、管理员账号、组织空间、个人空间 + 生活模板包），**无需手动 seed，
+直接登录即可**。默认账号：`chen.xingye / ontos@2026`（**首次登录后立即改密**）。
 
 ```bash
-# 1) 必需：创建角色、管理员账号与默认组织空间
-docker compose exec ontoos npx tsx server/seed.ts
-
-# 2) 可选：装载全功能验证数据（120 项断言，含个人空间与生活模板包）
+# 可选：装载全功能验证数据（120 项断言，覆盖 42 页全部功能特性）
 docker compose exec ontoos node demo-data/load.mjs
 ```
 
-初始化后默认账号：`chen.xingye / ontos@2026`（**首次登录后立即改密**）。
-
-> **启动时序说明**：容器启动时自动执行幂等迁移（`ensureMigrated()`）建立全部表结构；
-> 空库阶段会跳过「空间地基回填」（`spaces.owner_id` 外键依赖 `users`），
-> 由 `npm run seed` 创建账号与空间后补齐。因此**全新部署不要跳过 seed**。
+> **关闭自动初始化**：正式部署接真实数据时，在环境变量中加 `AUTO_SEED=false`，
+> 空库将保持空白（仅建表），由你自行创建管理员账号。
+>
+> **启动时序**：启动时自动执行幂等迁移（`ensureMigrated()`）建表 → 检测 users 为空则
+> 自动 `runSeed()`（含个人空间与模板包）。手动重置演示数据可用
+> `docker compose exec ontoos npx tsx server/seed.ts`（注意会清空后重建）。
 >
 > 镜像已预编译服务端为 CommonJS（`dist-server/`），**运行时不依赖 tsx**；
 > `tsx` 仅保留给 seed/migrate/backup 等运维脚本，已列为生产依赖。
@@ -444,6 +446,15 @@ docker build -f Dockerfile.local-test -t ontoos-platform:latest .
 
 > 冒烟在本机完整基线为 204 项（多出的项依赖外部 AI 网关与本地测试数据），
 > 容器内基线为 140 项（不含需外部 LLM 的用例）。两者均为 0 失败。
+
+**ghcr.io 官方镜像基线**（`ghcr.io/dengzhh/ontology-platform:latest`，含自动初始化修复）：
+
+| 环节 | 结果 |
+|---|---|
+| 匿名拉取（amd64/arm64） | ✅ 654MB |
+| 空卷启动 | ✅ 自动建表 + 自动写入演示数据（7 用户/9 类型/29 对象/个人空间），healthy |
+| 演示账号登录 | ✅ 零手动操作直接 200 |
+| `AUTO_SEED=false` | ✅ 空库保持空白（users=0） |
 
 **实测中发现并修复的部署缺陷**（均已修复，记录备查）：
 

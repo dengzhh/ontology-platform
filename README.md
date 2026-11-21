@@ -119,20 +119,24 @@ export NODE_ENV=production
 npm run start             # 纯 node 运行，不依赖 tsx：http://localhost:5000
 ```
 
-**Docker（二选一）**
+**Docker（推荐，二选一）**
 
 ```bash
-# 方式一：直接拉取官方构建的镜像（免构建，支持 amd64/arm64）
-docker pull ghcr.io/dengzhh/ontology-platform:latest
+# 方式一：直接拉取官方构建的镜像（免构建，支持 amd64/arm64，约 654MB）
+# 空库首次启动会自动写入演示数据，直接登录即可，无需手动初始化
+docker run -d --name ontoos \
+  -e ONTOOS_SECRET="$(openssl rand -base64 32)" \
+  -e ONTOOS_JWT_SECRET="$(openssl rand -base64 32)" \
+  -p 5000:5000 -v ontoos-data:/app/data \
+  ghcr.io/dengzhh/ontology-platform:latest
 
 # 方式二：本地构建
 docker compose up -d --build
-
-# 首次启动后初始化数据（容器会自动建表，但账号与空间需 seed）
-docker compose exec ontoos npx tsx server/seed.ts
 ```
 
-> 镜像地址：`ghcr.io/dengzhh/ontology-platform`（标签：`latest`、`v1.2.3`、`sha-xxxxxxx`）
+- 默认账号：`chen.xingye / ontos@2026`（首启自动创建）
+- 正式部署接真实数据时，加 `-e AUTO_SEED=false` 关闭演示数据自动写入
+- 镜像地址：`ghcr.io/dengzhh/ontology-platform`（标签：`latest`、`v1.2.3`、`sha-xxxxxxx`）
 
 **备份与恢复（VACUUM INTO 在线快照，不必停服）**
 
