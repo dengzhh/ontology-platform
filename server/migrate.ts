@@ -150,6 +150,19 @@ function runPostMigrations() {
   previous_id TEXT NOT NULL DEFAULT '', duration_ms INTEGER NOT NULL DEFAULT 0,
   space_id TEXT NOT NULL DEFAULT '', created_at INTEGER NOT NULL
   );
+  CREATE TABLE IF NOT EXISTS llm_calls (
+  id TEXT PRIMARY KEY, scene TEXT NOT NULL DEFAULT '',
+  user_id TEXT NOT NULL DEFAULT '', user_name TEXT NOT NULL DEFAULT '',
+  space_id TEXT NOT NULL DEFAULT '', conversation_id TEXT NOT NULL DEFAULT '',
+  round INTEGER NOT NULL DEFAULT 0,
+  endpoint TEXT NOT NULL DEFAULT '', model TEXT NOT NULL DEFAULT '', engine TEXT NOT NULL DEFAULT 'llm',
+  request_messages TEXT NOT NULL DEFAULT '[]', tool_names TEXT NOT NULL DEFAULT '[]',
+  reply TEXT NOT NULL DEFAULT '', tool_calls TEXT NOT NULL DEFAULT '[]',
+  input_tokens INTEGER, output_tokens INTEGER,
+  duration_ms INTEGER NOT NULL DEFAULT 0, status TEXT NOT NULL DEFAULT 'ok',
+  error TEXT NOT NULL DEFAULT '', created_at INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_llm_calls_created ON llm_calls (created_at DESC);
   `)
   console.log('[migrate] 第 2 批新表已就绪（幂等）')
 

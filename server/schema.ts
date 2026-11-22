@@ -662,3 +662,27 @@ export const deployments = sqliteTable('deployments', {
   spaceId: text('space_id').notNull().default(''),
   createdAt: integer('created_at').notNull(),
 })
+
+/* ============ LLM 调用日志（网关观测：模型/tokens/请求报文/工具调用/耗时） ============ */
+export const llmCalls = sqliteTable('llm_calls', {
+  id: text('id').primaryKey(),
+  scene: text('scene').notNull().default(''), // assist | aip_agent | doc_analysis | object_extract | knowledge_extract | test | other
+  userId: text('user_id').notNull().default(''),
+  userName: text('user_name').notNull().default(''),
+  spaceId: text('space_id').notNull().default(''),
+  conversationId: text('conversation_id').notNull().default(''),
+  round: integer('round').notNull().default(0), // 同一会话内第几次模型调用（前端每轮工具回灌各记一次）
+  endpoint: text('endpoint').notNull().default(''), // 仅 host+路径，绝不落 key
+  model: text('model').notNull().default(''),
+  engine: text('engine').notNull().default('llm'), // llm | local（本地引擎/降级）
+  requestMessages: text('request_messages').notNull().default('[]'), // 完整请求报文（JSON，200KB 截断）
+  toolNames: text('tool_names').notNull().default('[]'), // 本次下发的工具清单
+  reply: text('reply').notNull().default(''), // 模型回复（8KB 截断）
+  toolCalls: text('tool_calls').notNull().default('[]'), // 模型返回的工具调用
+  inputTokens: integer('input_tokens'),
+  outputTokens: integer('output_tokens'),
+  durationMs: integer('duration_ms').notNull().default(0),
+  status: text('status').notNull().default('ok'), // ok | error | timeout | degraded | local
+  error: text('error').notNull().default(''),
+  createdAt: integer('created_at').notNull(),
+})

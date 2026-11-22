@@ -70,9 +70,10 @@ function layout(nodes: GraphNode[], edges: GraphEdge[], width: number, height: n
 
   const adj = edges.map((e) => [e.source, e.target] as const)
   // 理想边长：随节点数略增；斥力强度也相应提高，保证节点间距
-  const idealLen = 96 + Math.min(n, 60) * 1.6
+  // （节点半径已加大到 12，最小间距同步放宽，给节点下方 16px 标签留空间）
+  const idealLen = 112 + Math.min(n, 60) * 1.6
   const repulsion = idealLen * idealLen * 0.85
-  const minDist = 46 // 最小节点间距（防重叠）
+  const minDist = 60 // 最小节点间距（防重叠）
   const iterations = 260
 
   for (let it = 0; it < iterations; it++) {
@@ -233,7 +234,13 @@ export default function VertexGraph() {
 
           <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_300px]">
             <div className="relative">
-              <ZoomableCanvas width={W} height={H} className="h-[620px]">
+              <ZoomableCanvas
+                key={data ? visibleNodes.length : 'loading'}
+                width={W}
+                height={H}
+                className="h-[620px]"
+                initialScale={data && data.nodes.length > 0 ? (data.nodes.length <= 24 ? 1.7 : 1.35) : 1}
+              >
                 {visibleEdges.map((e) => {
                   const a = pos.get(e.source)
                   const b = pos.get(e.target)
@@ -243,9 +250,9 @@ export default function VertexGraph() {
                     <line
                       key={e.id}
                       x1={a.x} y1={a.y} x2={b.x} y2={b.y}
-                      stroke={isSel ? '#3b82f6' : '#cbd5e1'}
-                      strokeWidth={isSel ? 2 : 1.2}
-                      opacity={isSel ? 1 : 0.65}
+                      stroke={isSel ? '#3b82f6' : '#94a3b8'}
+                      strokeWidth={isSel ? 3 : 2.2}
+                      opacity={isSel ? 1 : 0.9}
                     />
                   )
                 })}
@@ -253,13 +260,13 @@ export default function VertexGraph() {
                   const p = pos.get(n.id)
                   if (!p) return null
                   const isSel = selected === n.id
-                  const r = isSel ? 11 : 8
+                  const r = isSel ? 16 : 12
                   return (
                     <g key={n.id} data-node className="cursor-pointer" onClick={() => setSelected(isSel ? null : n.id)}>
-                      {isSel && <circle cx={p.x} cy={p.y} r={r + 9} fill={n.color} opacity={0.15} />}
-                      <circle cx={p.x} cy={p.y} r={r} fill={n.color} stroke="#fff" strokeWidth={2.5} />
-                      <text x={p.x} y={p.y + r + 13} textAnchor="middle" fontSize={12} fontWeight={isSel ? 700 : 500} fill={isSel ? '#1e3a8a' : '#475569'}>
-                        {n.label.slice(0, 14)}
+                      {isSel && <circle cx={p.x} cy={p.y} r={r + 11} fill={n.color} opacity={0.15} />}
+                      <circle cx={p.x} cy={p.y} r={r} fill={n.color} stroke="#fff" strokeWidth={3} />
+                      <text x={p.x} y={p.y + r + 16} textAnchor="middle" fontSize={16} fontWeight={isSel ? 700 : 500} fill={isSel ? '#1e3a8a' : '#334155'}>
+                        {n.label.slice(0, 16)}
                       </text>
                     </g>
                   )

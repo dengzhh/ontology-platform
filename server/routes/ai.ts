@@ -22,11 +22,49 @@ function getAiConfig(): AiConfig | null {
   return { endpoint: v.endpoint, model: v.model, apiKey: v.apiKey || '' }
 }
 
+/** LLM 调用观测上下文（随调用落 llm_calls 表） */
+export interface LlmLogCtx {
+  scene: string
+  userId?: string
+  userName?: string
+  spaceId?: string
+  conversationId?: string
+  round?: number
+}
+
+/** 写 LLM 调用日志（模型/tokens/请求报文/工具调用/耗时；截断保护，观测失败绝不影响主流程） */
+export function logLlmCall(x: {
+  scene: string; userId?: string; userName?: string; spaceId?: string; conversationId?: string; round?: number
+  endpoint?: string; model?: string; engine?: 'llm' | 'local'
+  messages?: unknown[]; tools?: string[]
+  reply?: string; toolCalls?: unknown[]
+  inputTokens?: number | null; outputTokens?: number | null
+  durationMs: number; status?: 'ok' | 'error' | 'timeout' | 'degraded' | 'local'; error?: string
+}) {
+  try {
+    db.insert(tables.llmCalls).values({
+      id: `LC-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
+      scene: x.scene, userId: x.userId ?? '', userName: x.userName ?? '', spaceId: x.spaceId ?? '',
+      conversationId: x.conversationId ?? '', round: x.round ?? 0,
+      endpoint: (x.endpoint ?? '').replace(/^https?:\/\//, '').slice(0, 160),
+      model: x.model ?? '', engine: x.engine ?? 'llm',
+      requestMessages: JSON.stringify(x.messages ?? []).slice(0, 200_000),
+      toolNames: JSON.stringify(x.tools ?? []),
+      reply: (x.reply ?? '').slice(0, 8_000),
+      toolCalls: JSON.stringify(x.toolCalls ?? []).slice(0, 60_000),
+      inputTokens: x.inputTokens ?? null, outputTokens: x.outputTokens ?? null,
+      durationMs: Math.round(x.durationMs), status: x.status ?? 'ok',
+      error: (x.error ?? '').slice(0, 500),
+      createdAt: Date.now(),
+    }).run()
+  } catch { /* 观测写入失败不影响业务 */ }
+}
+
 /** 通用补全（无工具），供本体抽取等场景复用；未配置时抛 AI_NOT_CONFIGURED */
-export async function llmComplete(system: string, user: string): Promise<string> {
+export async function llmComplete(system: string, user: string, meta?: LlmLogCtx): Promise<string> {
   const cfg = getAiConfig()
   if (!cfg) throw new Error('AI_NOT_CONFIGURED')
-  const r = await callLlm(cfg, [{ role: 'system', content: system }, { role: 'user', content: user }], [])
+  const r = await callLlm(cfg, [{ role: 'system', content: system }, { role: 'user', content: user }], [], { scene: 'other', ...meta })
   return r.reply
 }
 
@@ -142,11 +180,64 @@ aiRoutes.post('/test', requireAdmin, async (c) => {
   const cfg = getAiConfig()
   if (!cfg) return c.json({ error: '尚未配置 AI 服务' }, 400)
   try {
-    const res = await callLlm(cfg, [{ role: 'user', content: '只回复两个字：连通' }], [])
+    const me = c.get('user')
+    const res = await callLlm(cfg, [{ role: 'user', content: '只回复两个字：连通' }], [], { scene: 'test', userId: me.id, userName: me.name })
     return c.json({ ok: true, reply: res.reply })
   } catch (e) {
     return c.json({ error: e instanceof Error ? e.message : '测试失败' }, 502)
   }
+})
+
+/* ---------------- LLM 调用日志（管理端观测：模型/tokens/请求报文/工具调用/耗时） ---------------- */
+
+aiRoutes.get('/llm-calls', requireAdmin, (c) => {
+  const q = c.req.query()
+  const page = Math.max(1, Number(q.page ?? 1))
+  const pageSize = Math.min(100, Math.max(5, Number(q.pageSize ?? 15)))
+  let rows = db.select().from(tables.llmCalls).all().sort((a, b) => b.createdAt - a.createdAt)
+  if (q.scene) rows = rows.filter((r) => r.scene === q.scene)
+  if (q.status) rows = rows.filter((r) => r.status === q.status)
+  const total = rows.length
+  const okRows = rows.filter((r) => r.status === 'ok')
+  const durations = okRows.map((r) => r.durationMs).sort((a, b) => a - b)
+  const pick = (p: number) => (durations.length ? durations[Math.min(durations.length - 1, Math.floor(durations.length * p))] : 0)
+  const byScene: Record<string, number> = {}
+  for (const r of rows) byScene[r.scene] = (byScene[r.scene] ?? 0) + 1
+  const summary = {
+    calls: total,
+    ok: okRows.length,
+    errors: rows.filter((r) => r.status === 'error' || r.status === 'timeout').length,
+    degraded: rows.filter((r) => r.status === 'degraded').length,
+    local: rows.filter((r) => r.status === 'local').length,
+    avgMs: durations.length ? Math.round(durations.reduce((s, v) => s + v, 0) / durations.length) : 0,
+    p50Ms: pick(0.5),
+    p95Ms: pick(0.95),
+    maxMs: durations.length ? durations[durations.length - 1] : 0,
+    totalIn: rows.reduce((s, r) => s + (r.inputTokens ?? 0), 0),
+    totalOut: rows.reduce((s, r) => s + (r.outputTokens ?? 0), 0),
+    byScene,
+  }
+  // 列表不回传大字段（请求报文走详情接口）
+  const light = rows.slice((page - 1) * pageSize, page * pageSize).map(({ requestMessages, ...rest }) => rest)
+  return c.json({ total, page, pageSize, rows: light, summary })
+})
+
+aiRoutes.get('/llm-calls/:id', requireAdmin, (c) => {
+  const row = db.select().from(tables.llmCalls).where(eq(tables.llmCalls.id, c.req.param('id') as string)).get()
+  if (!row) return c.json({ error: '记录不存在' }, 404)
+  return c.json(row)
+})
+
+/** 清空调用日志（保留最近 keep 条，默认全清） */
+aiRoutes.delete('/llm-calls', requireAdmin, (c) => {
+  const keep = Number(c.req.query('keep') ?? 0)
+  const all = db.select().from(tables.llmCalls).all().sort((a, b) => b.createdAt - a.createdAt)
+  for (const r of all.slice(keep)) db.delete(tables.llmCalls).where(eq(tables.llmCalls.id, r.id)).run()
+  db.insert(tables.auditEvents).values({
+    id: `AE-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+    actor: c.get('user').name, action: '清空 LLM 调用日志', target: `保留 ${keep} 条`, ip: '本地', createdAt: Date.now(),
+  }).run()
+  return c.json({ ok: true, deleted: Math.max(0, all.length - keep) })
 })
 
 /** 对话主入口：多轮工具调用协议（前端循环执行工具，空间感知） */
@@ -179,14 +270,19 @@ aiRoutes.post('/chat', async (c) => {
   const cfg = getAiConfig()
   const system = buildSystemPrompt(user, context?.page ?? '', space?.name ?? '', spaceId)
 
+  // 轮次：历史里 assistant 条数即第几次模型调用（前端每轮工具回灌各计一次）
+  const round = history.filter((m) => m.role === 'assistant').length
+  const llmCtx: LlmLogCtx = { scene: 'assist', userId: user.id, userName: user.name, spaceId, round }
+
   if (cfg) {
     try {
-      const res = await callLlm(cfg, [{ role: 'system', content: system }, ...toOpenAi(history)], AI_TOOLS)
+      const res = await callLlm(cfg, [{ role: 'system', content: system }, ...toOpenAi(history)], AI_TOOLS, llmCtx)
       if (spaceId) recordAiCall(spaceId)
       return c.json(res)
     } catch (e) {
       // 网关不可用（429/超时）时降级到本地引擎，保留其工具调用，别把 toolCalls 丢掉
       const local = localAnswer(user, last.content, spaceId)
+      logLlmCall({ ...llmCtx, model: cfg.model, endpoint: cfg.endpoint, engine: 'local', status: 'degraded', error: e instanceof Error ? e.message : '未知错误', reply: local.reply, toolCalls: local.toolCalls ?? [], durationMs: 0 })
       return c.json({
         reply: `模型网关暂时不可用（${e instanceof Error ? e.message : '未知错误'}），已切换到本地引擎。${local.reply ? '\n\n' + local.reply : ''}`,
         toolCalls: local.toolCalls,
@@ -202,9 +298,12 @@ aiRoutes.post('/chat', async (c) => {
       .map((m) => m.content)
       .join('\n\n')
       .slice(0, 800)
+    logLlmCall({ ...llmCtx, engine: 'local', status: 'local', reply: `已完成，结果如下：\n${summary}`, durationMs: 0 })
     return c.json({ reply: `已完成，结果如下：\n${summary}` })
   }
-  return c.json(localAnswer(user, last.content, spaceId))
+  const localRes = localAnswer(user, last.content, spaceId)
+  logLlmCall({ ...llmCtx, engine: 'local', status: 'local', reply: localRes.reply, toolCalls: localRes.toolCalls ?? [], durationMs: 0 })
+  return c.json(localRes)
 })
 
 /* ---------------- LLM 调用（OpenAI 兼容 /chat/completions） ---------------- */
@@ -214,7 +313,7 @@ interface LlmResult {
   toolCalls?: { id: string; name: string; args: Record<string, unknown> }[]
 }
 
-async function callLlm(cfg: AiConfig, messages: unknown[], tools: typeof AI_TOOLS | []): Promise<LlmResult> {
+async function callLlm(cfg: AiConfig, messages: unknown[], tools: typeof AI_TOOLS | [], ctx: LlmLogCtx = { scene: 'other' }): Promise<LlmResult> {
   const url = cfg.endpoint.replace(/\/$/, '') + '/chat/completions'
   const body: Record<string, unknown> = { model: cfg.model, messages, temperature: 0.2 }
   if (tools.length > 0) {
@@ -232,24 +331,43 @@ async function callLlm(cfg: AiConfig, messages: unknown[], tools: typeof AI_TOOL
     }))
     body.tool_choice = 'auto'
   }
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${cfg.apiKey}` },
-    body: JSON.stringify(body),
-    signal: AbortSignal.timeout(60_000),
-  })
-  if (!res.ok) {
-    const text = await res.text().catch(() => '')
-    throw new Error(`接口返回 ${res.status}：${text.slice(0, 120)}`)
+  const started = Date.now()
+  const toolNames = tools.map((t) => t.name)
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${cfg.apiKey}` },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(60_000),
+    })
+    if (!res.ok) {
+      const text = await res.text().catch(() => '')
+      throw new Error(`接口返回 ${res.status}：${text.slice(0, 120)}`)
+    }
+    const data = (await res.json()) as {
+      choices?: { message?: { content?: string; tool_calls?: { id: string; function: { name: string; arguments: string } }[] } }[]
+      usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number }
+    }
+    const msg = data.choices?.[0]?.message
+    const toolCalls = msg?.tool_calls?.map((tc) => ({
+      id: tc.id,
+      name: tc.function.name,
+      args: safeJson(tc.function.arguments),
+    }))
+    const result: LlmResult = { reply: msg?.content ?? '', toolCalls: toolCalls?.length ? toolCalls : undefined }
+    logLlmCall({
+      ...ctx, endpoint: url, model: cfg.model, messages, tools: toolNames,
+      reply: result.reply, toolCalls: result.toolCalls ?? [],
+      inputTokens: data.usage?.prompt_tokens ?? null, outputTokens: data.usage?.completion_tokens ?? null,
+      durationMs: Date.now() - started, status: 'ok',
+    })
+    return result
+  } catch (e) {
+    const errText = e instanceof Error ? `${e.name}: ${e.message}` : String(e)
+    const isTimeout = /timeout|abort/i.test(errText)
+    logLlmCall({ ...ctx, endpoint: url, model: cfg.model, messages, tools: toolNames, durationMs: Date.now() - started, status: isTimeout ? 'timeout' : 'error', error: errText })
+    throw e
   }
-  const data = (await res.json()) as { choices?: { message?: { content?: string; tool_calls?: { id: string; function: { name: string; arguments: string } }[] } }[] }
-  const msg = data.choices?.[0]?.message
-  const toolCalls = msg?.tool_calls?.map((tc) => ({
-    id: tc.id,
-    name: tc.function.name,
-    args: safeJson(tc.function.arguments),
-  }))
-  return { reply: msg?.content ?? '', toolCalls: toolCalls?.length ? toolCalls : undefined }
 }
 
 function safeJson(s: string): Record<string, unknown> {

@@ -15,6 +15,7 @@ export default function ZoomableCanvas({
   maxScale = 4,
   className,
   viewportHeight,
+  initialScale = 1,
 }: {
   width: number
   height: number
@@ -24,10 +25,15 @@ export default function ZoomableCanvas({
   className?: string
   /** 容器可视高度（px）。不传则由 className 控制（如 h-[620px]） */
   viewportHeight?: number
+  /** 初始缩放（复位也回到该值）。节点多的小图建议 >1，保证节点/标签可读 */
+  initialScale?: number
 }) {
-  const [scale, setScale] = useState(1)
-  const [tx, setTx] = useState(0)
-  const [ty, setTy] = useState(0)
+  const initS = Math.min(maxScale, Math.max(minScale, initialScale))
+  /** 以画布中心为锚点应用初始缩放（内容居中放大，而不是放大到左上角） */
+  const centerT = (s: number) => ({ tx: (width / 2) * (1 - s), ty: (height / 2) * (1 - s) })
+  const [scale, setScale] = useState(initS)
+  const [tx, setTx] = useState(() => centerT(initS).tx)
+  const [ty, setTy] = useState(() => centerT(initS).ty)
   const [panning, setPanning] = useState(false)
   const wrapRef = useRef<HTMLDivElement>(null)
   const stateRef = useRef({ scale, tx, ty, dragging: false, sx: 0, sy: 0 })
@@ -103,9 +109,9 @@ export default function ZoomableCanvas({
     setScale((s) => Math.min(maxScale, Math.max(minScale, s * factor)))
   }
   function reset() {
-    setScale(1)
-    setTx(0)
-    setTy(0)
+    setScale(initS)
+    setTx(centerT(initS).tx)
+    setTy(centerT(initS).ty)
   }
 
   const wrapStyle: CSSProperties | undefined = viewportHeight ? { height: viewportHeight } : undefined

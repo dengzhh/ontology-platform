@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import type { LucideIcon } from 'lucide-react'
-import { Activity, Bot, Cpu, Database, Loader2, Mail, MousePointerClick, RotateCcw, Save, Send, ShieldCheck, SlidersHorizontal, Sparkles, Store, Layers, Camera } from 'lucide-react'
+import { Activity, Bot, Cpu, Database, Loader2, Mail, MousePointerClick, RotateCcw, Save, Send, ShieldCheck, SlidersHorizontal, Sparkles, Store, Layers, Camera, Trash2, X } from 'lucide-react'
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import PageShell from '@/components/ui/PageShell'
-import { Badge, StatusDot } from '@/components/ui/Badge'
+import { Badge, StatusDot, type BadgeColor } from '@/components/ui/Badge'
 import { Card, CardHeader } from '@/components/ui/Card'
 import { KVList, ProgressBar } from '@/components/ui/Misc'
 import Btn from '@/components/ui/Btn'
@@ -355,6 +355,218 @@ function VisionCard() {
   )
 }
 
+/* ---------- LLM 调用日志（网关观测：模型/tokens/请求报文/工具调用/耗时） ---------- */
+interface LlmCallRow {
+  id: string; scene: string; userName: string; round: number
+  endpoint: string; model: string; engine: string
+  toolNames: string; reply: string; toolCalls: string
+  inputTokens: number | null; outputTokens: number | null
+  durationMs: number; status: string; error: string; createdAt: number
+  requestMessages?: string
+}
+interface LlmCallsResp {
+  total: number; page: number; pageSize: number
+  rows: LlmCallRow[]
+  summary: { calls: number; ok: number; errors: number; degraded: number; local: number; avgMs: number; p50Ms: number; p95Ms: number; maxMs: number; totalIn: number; totalOut: number; byScene: Record<string, number> }
+}
+
+const LLM_SCENE_LABEL: Record<string, string> = {
+  assist: '智能助手', aip_agent: '智能体', doc_analysis: '文档分析', test: '连通测试', other: '其他',
+}
+const LLM_STATUS_COLOR: Record<string, BadgeColor> = {
+  ok: 'green', error: 'red', timeout: 'amber', degraded: 'amber', local: 'slate',
+}
+
+function fmtMs(ms: number) { return ms >= 10_000 ? `${(ms / 1000).toFixed(1)}s` : `${ms}ms` }
+
+function prettyJson(s: string | undefined): string {
+  if (!s) return '（空）'
+  try { return JSON.stringify(JSON.parse(s), null, 2) } catch { return s }
+}
+
+function LlmLogCard() {
+  const [rows, setRows] = useState<LlmCallRow[]>([])
+  const [summary, setSummary] = useState<LlmCallsResp['summary'] | null>(null)
+  const [total, setTotal] = useState(0)
+  const [page, setPage] = useState(1)
+  const [scene, setScene] = useState('')
+  const [status, setStatus] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [detail, setDetail] = useState<LlmCallRow | null>(null)
+  const [detailTab, setDetailTab] = useState<'req' | 'resp'>('req')
+  const pageSize = 15
+
+  async function load(p: number, s = scene, st = status) {
+    setLoading(true)
+    try {
+      const q = new URLSearchParams({ page: String(p), pageSize: String(pageSize) })
+      if (s) q.set('scene', s)
+      if (st) q.set('status', st)
+      const r = await api<LlmCallsResp>(`/ai/llm-calls?${q}`)
+      setRows(r.rows); setSummary(r.summary); setTotal(r.total); setPage(p)
+    } catch { setRows([]) }
+    finally { setLoading(false) }
+  }
+  useEffect(() => { load(1) }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function openDetail(row: LlmCallRow) {
+    setDetailTab('req')
+    try { setDetail(await api<LlmCallRow>(`/ai/llm-calls/${row.id}`)) }
+    catch { setDetail(row) }
+  }
+
+  async function clearLogs() {
+    if (!window.confirm('确认清空全部 LLM 调用日志？此操作不可恢复。')) return
+    try { await api('/ai/llm-calls', { method: 'DELETE' }); load(1) } catch { /* ignore */ }
+  }
+
+  const toolChips = (r: LlmCallRow) => {
+    try {
+      const names = JSON.parse(r.toolNames || '[]') as string[]
+      return names.length ? names.join('、') : '—'
+    } catch { return '—' }
+  }
+  const calledTools = (r: LlmCallRow) => {
+    try {
+      const tcs = JSON.parse(r.toolCalls || '[]') as { name: string }[]
+      return tcs.map((t) => t.name).join('、') || '—'
+    } catch { return '—' }
+  }
+
+  const stats: { label: string; value: string; hint?: string }[] = summary ? [
+    { label: '总调用', value: String(summary.calls) },
+    { label: '成功', value: String(summary.ok) },
+    { label: '错误/超时', value: String(summary.errors), hint: summary.errors ? '含网关不可用' : undefined },
+    { label: '降级/本地', value: String(summary.degraded + summary.local) },
+    { label: '平均耗时', value: fmtMs(summary.avgMs) },
+    { label: 'P50 / P95', value: `${fmtMs(summary.p50Ms)} / ${fmtMs(summary.p95Ms)}` },
+    { label: 'Tokens 入', value: summary.totalIn.toLocaleString() },
+    { label: 'Tokens 出', value: summary.totalOut.toLocaleString() },
+  ] : []
+
+  return (
+    <Card>
+      <CardHeader
+        title={<span className="flex items-center gap-2"><Activity size={15} className="text-brand-600" /> LLM 调用日志</span>}
+        desc="每次模型网关调用的完整观测：模型、Token 消耗、请求报文、工具调用与响应耗时。点击任意行查看完整报文，用于分析调用链路是否合理。"
+        actions={<Btn size="sm" variant="ghost" onClick={clearLogs}><Trash2 size={13} /> 清空</Btn>}
+      />
+      {/* 汇总指标 */}
+      <div className="grid grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-8">
+        {stats.map((s) => (
+          <div key={s.label} className="rounded-lg border border-slate-200 bg-slate-50/60 px-3 py-2">
+            <div className="text-[11px] text-slate-500">{s.label}</div>
+            <div className="mt-0.5 text-sm font-semibold text-slate-800">{s.value}</div>
+          </div>
+        ))}
+      </div>
+      {/* 筛选 */}
+      <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+        <select className="rounded-md border border-slate-200 bg-white px-2 py-1.5" value={scene} onChange={(e) => { setScene(e.target.value); load(1, e.target.value, status) }}>
+          <option value="">全部场景</option>
+          {Object.entries(LLM_SCENE_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+        </select>
+        <select className="rounded-md border border-slate-200 bg-white px-2 py-1.5" value={status} onChange={(e) => { setStatus(e.target.value); load(1, scene, e.target.value) }}>
+          <option value="">全部状态</option>
+          <option value="ok">成功</option>
+          <option value="error">错误</option>
+          <option value="timeout">超时</option>
+          <option value="degraded">降级</option>
+          <option value="local">本地引擎</option>
+        </select>
+        <Btn size="sm" variant="ghost" onClick={() => load(1)} disabled={loading}>
+          {loading ? <Loader2 size={13} className="animate-spin" /> : <RotateCcw size={13} />} 刷新
+        </Btn>
+        <span className="ml-auto text-slate-400">共 {total} 条 · 第 {page} / {Math.max(1, Math.ceil(total / pageSize))} 页</span>
+      </div>
+      {/* 明细表 */}
+      <div className="mt-2 overflow-x-auto">
+        <table className="w-full min-w-[860px] text-left text-xs">
+          <thead>
+            <tr className="border-b border-slate-200 text-[11px] text-slate-500">
+              <th className="py-2 pr-3 font-medium">时间</th>
+              <th className="py-2 pr-3 font-medium">场景</th>
+              <th className="py-2 pr-3 font-medium">用户</th>
+              <th className="py-2 pr-3 font-medium">模型</th>
+              <th className="py-2 pr-3 font-medium">轮次</th>
+              <th className="py-2 pr-3 font-medium">耗时</th>
+              <th className="py-2 pr-3 font-medium">Tokens 入/出</th>
+              <th className="py-2 pr-3 font-medium">调用工具</th>
+              <th className="py-2 font-medium">状态</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.length === 0 && (
+              <tr><td colSpan={9} className="py-8 text-center text-slate-400">{loading ? '加载中…' : '暂无调用记录——与智能助手对话后这里会出现完整观测'}</td></tr>
+            )}
+            {rows.map((r) => (
+              <tr key={r.id} className="cursor-pointer border-b border-slate-100 hover:bg-slate-50" onClick={() => openDetail(r)}>
+                <td className="py-2 pr-3 whitespace-nowrap text-slate-500">{new Date(r.createdAt).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' })}</td>
+                <td className="py-2 pr-3 whitespace-nowrap">{LLM_SCENE_LABEL[r.scene] ?? r.scene}{r.engine === 'local' && <span className="ml-1 text-[10px] text-slate-400">(本地)</span>}</td>
+                <td className="py-2 pr-3 whitespace-nowrap text-slate-500">{r.userName || '—'}</td>
+                <td className="py-2 pr-3 whitespace-nowrap">{r.model || '—'}</td>
+                <td className="py-2 pr-3 text-slate-500">#{r.round}</td>
+                <td className={cn('py-2 pr-3 whitespace-nowrap font-medium', r.durationMs > 10_000 ? 'text-red-600' : r.durationMs > 4_000 ? 'text-amber-600' : 'text-slate-700')}>{fmtMs(r.durationMs)}</td>
+                <td className="py-2 pr-3 whitespace-nowrap text-slate-500">{r.inputTokens ?? '—'} / {r.outputTokens ?? '—'}</td>
+                <td className="py-2 pr-3 max-w-[180px] truncate text-brand-700" title={calledTools(r)}>{calledTools(r)}</td>
+                <td className="py-2"><Badge color={LLM_STATUS_COLOR[r.status] ?? 'slate'} dot>{r.status}</Badge></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {/* 分页 */}
+      {total > pageSize && (
+        <div className="mt-2 flex items-center justify-end gap-2 text-xs">
+          <Btn size="sm" variant="ghost" disabled={page <= 1 || loading} onClick={() => load(page - 1)}>上一页</Btn>
+          <Btn size="sm" variant="ghost" disabled={page >= Math.ceil(total / pageSize) || loading} onClick={() => load(page + 1)}>下一页</Btn>
+        </div>
+      )}
+      {/* 详情抽屉 */}
+      {detail && (
+        <div className="fixed inset-0 z-50 flex justify-end bg-slate-900/40" onClick={() => setDetail(null)}>
+          <div className="flex h-full w-full max-w-2xl flex-col bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
+              <div>
+                <div className="text-sm font-semibold text-slate-800">调用详情 · {LLM_SCENE_LABEL[detail.scene] ?? detail.scene}</div>
+                <div className="mt-0.5 text-[11px] text-slate-500">
+                  {new Date(detail.createdAt).toLocaleString('zh-CN')} · {detail.model || '本地引擎'} · 轮次 #{detail.round} · {fmtMs(detail.durationMs)} · tokens {detail.inputTokens ?? '—'}/{detail.outputTokens ?? '—'} · {detail.endpoint || '—'}
+                </div>
+              </div>
+              <button className="rounded-md p-1 text-slate-400 hover:bg-slate-100" onClick={() => setDetail(null)}><X size={16} /></button>
+            </div>
+            <div className="flex gap-1 border-b border-slate-200 px-4 pt-2 text-xs">
+              {([['req', '请求报文'], ['resp', '响应与工具']] as const).map(([k, label]) => (
+                <button key={k} className={cn('rounded-t-md px-3 py-1.5', detailTab === k ? 'border border-b-white border-slate-200 bg-white font-medium text-brand-700' : 'text-slate-500 hover:text-slate-700')} onClick={() => setDetailTab(k)}>{label}</button>
+              ))}
+            </div>
+            <div className="flex-1 overflow-auto bg-slate-50 p-4">
+              {detailTab === 'req' ? (
+                <>
+                  <div className="mb-2 text-[11px] text-slate-500">下发工具：{toolChips(detail)}</div>
+                  <pre className="whitespace-pre-wrap break-all rounded-lg border border-slate-200 bg-white p-3 text-[11px] leading-relaxed text-slate-700">{prettyJson(detail.requestMessages)}</pre>
+                </>
+              ) : (
+                <div className="space-y-3">
+                  {detail.error && <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-600">错误：{detail.error}</div>}
+                  <div>
+                    <div className="mb-1 text-[11px] font-medium text-slate-500">模型回复</div>
+                    <pre className="whitespace-pre-wrap break-all rounded-lg border border-slate-200 bg-white p-3 text-[11px] leading-relaxed text-slate-700">{detail.reply || '（空）'}</pre>
+                  </div>
+                  <div>
+                    <div className="mb-1 text-[11px] font-medium text-slate-500">模型返回的工具调用</div>
+                    <pre className="whitespace-pre-wrap break-all rounded-lg border border-slate-200 bg-white p-3 text-[11px] leading-relaxed text-slate-700">{prettyJson(detail.toolCalls)}</pre>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </Card>
+  )
+}
+
 /* ---------- 功能开关（真实配置） ---------- */
 interface UsageResp {
   metrics: { objects: number; documents: number; chunks: number; aiMessages: number; auditToday: number; auditWeek: number }
@@ -428,6 +640,9 @@ export default function ControlPanelPage() {  const featQ = useApi<{ features: R
 
       {/* 视觉模型（票据/单据扫描识别） */}
       <VisionCard />
+
+      {/* LLM 调用日志（网关观测） */}
+      <LlmLogCard />
 
       {/* 功能开关 */}
       <Card>

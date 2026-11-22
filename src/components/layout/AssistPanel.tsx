@@ -34,6 +34,8 @@ interface AnalysisResult {
   metric: { key: string; name: string } | null
   total: number
   applied: Record<string, unknown>
+  /** /dashboard/aggregate 响应自带的类型信息（下钻查明细用） */
+  type?: { id: string; name: string; color?: string }
 }
 
 /** 面板内消息（渲染用） */
@@ -246,7 +248,7 @@ export default function AssistPanel() {
         if (args.top) q.set('top', String(Math.max(1, Math.min(50, Number(args.top) || 5))))
         const r = await api<AnalysisResult & { error?: string }>(`/dashboard/aggregate?${q}`)
         if (r.error) return `分析失败：${r.error}`
-        lastAnalysis.current = { groups: r.groups ?? [], groupBy: r.groupBy, metric: r.metric, total: r.total, applied: r.applied ?? {}, compare: r.compare ?? undefined, cross: r.cross ?? undefined }
+        lastAnalysis.current = { groups: r.groups ?? [], groupBy: r.groupBy, metric: r.metric, total: r.total, applied: r.applied ?? {}, compare: r.compare ?? undefined, cross: r.cross ?? undefined, type: r.type }
         // 二维交叉：给 LLM 矩阵文本（行×列 + 合计），让其总结行列规律
         if (r.cross) {
           const cr = r.cross
@@ -493,20 +495,20 @@ export default function AssistPanel() {
           }
           history.push({ role: 'assistant', content: res.reply || '', toolCalls: res.toolCalls })
           history.push(...toolWire)
-          // 中间轮：展示工具链；若本轮含聚合分析，把图表附在这条消息上
           const analysis = lastAnalysis.current ?? undefined
-          setMsgs((m) => [...m, { role: 'ai', content: res.reply || '', tools: toolChips, ...(analysis ? { analysis } : {}) }])
-          // ask_clarification 是终态：渲染反问与可点选项，等用户点击答复，不回灌模型
+          // ask_clarification 是终态：合并工具链+可点选项只渲染一条（此前先渲"中间轮"再渲澄清会双渲染同内容），不回灌模型
           const clarifyCall = res.toolCalls.find((tc) => tc.name === 'ask_clarification')
           if (clarifyCall) {
             const raw = clarifyCall.args.options
             const options = (Array.isArray(raw) ? raw.map(String) : String(raw ?? '').split(/[,，、]/))
               .map((s) => s.trim()).filter(Boolean).slice(0, 6)
             const content = res.reply || String(clarifyCall.args.question ?? '能补充一点信息吗？')
-            setMsgs((m) => [...m, { role: 'ai', content, tools: toolChips, ...(options.length ? { clarify: options } : {}) }])
+            setMsgs((m) => [...m, { role: 'ai', content, tools: toolChips, ...(analysis ? { analysis } : {}), ...(options.length ? { clarify: options } : {}) }])
             if (cid) api(`/ai/conversations/${cid}/messages`, { method: 'POST', body: { role: 'assistant', content } }).catch(() => {})
             break
           }
+          // 中间轮：展示工具链；若本轮含聚合分析，把图表附在这条消息上
+          setMsgs((m) => [...m, { role: 'ai', content: res.reply || '', tools: toolChips, ...(analysis ? { analysis } : {}) }])
           // navigate 是终态动作（已跳转），不再回灌给模型，避免重复循环同一 toolCall
           if (res.toolCalls.some((tc) => tc.name === 'navigate')) {
             if (cid) api(`/ai/conversations/${cid}/messages`, { method: 'POST', body: { role: 'assistant', content: res.reply || '' } }).catch(() => {})
@@ -538,6 +540,48 @@ export default function AssistPanel() {
 
   function briefArgs(args: Record<string, unknown>): string {
     return Object.entries(args).map(([k, v]) => `${k}=${String(v).slice(0, 18)}`).join(' ')
+  }
+
+  /* ---------- ChatBI 图表交互：点击下钻明细 + 导出 CSV ---------- */
+  const [drill, setDrill] = useState<{ title: string; total: number; rows: { id: string; name: string; sub: string }[] } | null>(null)
+  const [drillLoading, setDrillLoading] = useState(false)
+
+  /** 点击图表中的任意分组 → 按该分组值检索对象明细（keyword 对 values JSON 做子串匹配，日期前缀也能命中） */
+  async function drillDown(a: AnalysisResult, groupKey: string) {
+    if (!a.type?.id || !groupKey) return
+    setDrillLoading(true)
+    setDrill({ title: `${a.type.name} · ${groupKey}`, total: 0, rows: [] })
+    try {
+      const r = await api<{ total: number; objects: { id: string; values: Record<string, unknown> }[] }>(
+        `/objects?type=${encodeURIComponent(a.type.id)}&keyword=${encodeURIComponent(groupKey)}&limit=30`,
+      )
+      setDrill({
+        title: `${a.type.name} · ${groupKey}`,
+        total: r.total,
+        rows: r.objects.map((o) => {
+          const v = o.values ?? {}
+          const name = ['name', 'title', 'code', 'no'].map((k) => v[k]).find((x) => typeof x === 'string' && x) ?? o.id
+          const sub = Object.entries(v).filter(([k]) => k !== 'name').slice(0, 3).map(([k, x]) => `${k}=${String(x).slice(0, 16)}`).join('  ')
+          return { id: o.id, name: String(name), sub }
+        }),
+      })
+    } catch { setDrill(null) }
+    finally { setDrillLoading(false) }
+  }
+
+  /** 导出当前聚合结果为 CSV（全部分组，不止展示出的前 N 组） */
+  function exportAnalysisCsv(a: AnalysisResult) {
+    const val = (g: ChartData) => (a.metric ? g.sum : g.count)
+    const head = `${a.groupBy.name},${a.metric ? a.metric.name + '总和' : '笔数'}`
+    const body = a.groups.map((g) => `"${String(g.name).replace(/"/g, '""')}",${val(g)}`).join('\n')
+    const meta = `# ${a.type?.name ?? ''} · ${a.total} 个对象 · ${a.groups.length} 组 · 来源 /dashboard/aggregate\n`
+    const blob = new Blob(['\ufeff' + meta + head + '\n' + body], { type: 'text/csv;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const el = document.createElement('a')
+    el.href = url
+    el.download = `chatbi-${a.groupBy.key}-${new Date().toISOString().slice(0, 10)}.csv`
+    el.click()
+    URL.revokeObjectURL(url)
   }
 
   return (
@@ -638,7 +682,10 @@ export default function AssistPanel() {
                         <span className="font-semibold text-slate-700">
                           {isTime ? '📈 按月趋势' : isPie ? '🥧 占比分布' : '📊 聚合'} · {a.groupBy.name}{a.applied?.top ? ` · TOP${String(a.applied.top)}` : ''}
                         </span>
-                        <span className="text-slate-400">{a.total} 个对象 · {a.groups.length} 组</span>
+                        <span className="flex items-center gap-2">
+                          <span className="text-slate-400">{a.total} 个对象 · {a.groups.length} 组</span>
+                          <button onClick={() => exportAnalysisCsv(a)} className="rounded border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] text-slate-500 hover:border-brand-300 hover:text-brand-700" title="导出全部分组为 CSV">CSV</button>
+                        </span>
                       </div>
                       {cmp && (
                         <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg bg-slate-50 px-2.5 py-2 text-[11px] text-slate-600">
@@ -681,42 +728,47 @@ export default function AssistPanel() {
                           </table>
                         </div>
                       ) : isTime ? (
-                        <div className="h-[130px] w-full">
-                          <LineChart width={292} height={130} data={shown.map((g) => ({ name: g.name, value: val(g) }))} margin={{ top: 6, right: 8, bottom: 0, left: 8 }}>
+                        <div className="h-[130px] w-full cursor-pointer" title="点击数据点查看该期明细">
+                          <LineChart width={292} height={130} data={shown.map((g) => ({ name: g.name, value: val(g) }))} margin={{ top: 6, right: 8, bottom: 0, left: 8 }}
+                            onClick={(s: { activePayload?: { payload: { name: string } }[] }) => {
+                              const p = s?.activePayload?.[0]?.payload
+                              if (p?.name) drillDown(a, p.name)
+                            }}>
                             <XAxis dataKey="name" tick={{ fontSize: 9, fill: '#94a3b8' }} interval="preserveStartEnd" tickLine={false} axisLine={{ stroke: '#e2e8f0' }} />
                             <YAxis hide />
                             <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid #e2e8f0' }} />
-                            <Line type="monotone" dataKey="value" stroke="#6366f1" strokeWidth={2} dot={false} isAnimationActive={false} />
+                            <Line type="monotone" dataKey="value" stroke="#6366f1" strokeWidth={2} dot={{ r: 2.5 }} activeDot={{ r: 4 }} isAnimationActive={false} />
                           </LineChart>
                         </div>
                       ) : isPie ? (
                         <div className="flex items-center gap-2">
                           <PieChart width={110} height={110}>
-                            <Pie data={shown.map((g) => ({ name: g.name, value: val(g) }))} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={26} outerRadius={50} isAnimationActive={false}>
-                              {shown.map((_, j) => <Cell key={j} fill={pieColors[j % pieColors.length]} />)}
+                            <Pie data={shown.map((g) => ({ name: g.name, value: val(g) }))} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={26} outerRadius={50} isAnimationActive={false}
+                              onClick={(d: { name?: string }) => { if (d?.name) drillDown(a, d.name) }}>
+                              {shown.map((_, j) => <Cell key={j} fill={pieColors[j % pieColors.length]} className="cursor-pointer" />)}
                             </Pie>
                             <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid #e2e8f0' }} />
                           </PieChart>
                           <div className="flex-1 space-y-1">
                             {shown.map((g, j) => (
-                              <div key={j} className="flex items-center gap-1.5 text-[10px]">
+                              <button key={j} className="flex w-full items-center gap-1.5 rounded px-0.5 py-0.5 text-left text-[10px] hover:bg-slate-50" title="点击查看该分组明细" onClick={() => drillDown(a, g.name)}>
                                 <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: pieColors[j % pieColors.length] }} />
-                                <span className="flex-1 truncate text-slate-600" title={g.name}>{g.name}</span>
+                                <span className="flex-1 truncate text-slate-600">{g.name}</span>
                                 <span className="font-mono font-semibold text-slate-700">{val(g)}</span>
-                              </div>
+                              </button>
                             ))}
                           </div>
                         </div>
                       ) : (
                         <div className="space-y-1.5">
                           {shown.map((g, j) => (
-                            <div key={j} className="flex items-center gap-1.5">
-                              <span className="w-16 shrink-0 truncate text-[10px] text-slate-500" title={g.name}>{g.name}</span>
+                            <button key={j} className="flex w-full items-center gap-1.5 rounded px-0.5 py-0.5 text-left hover:bg-slate-50" title="点击查看该分组明细" onClick={() => drillDown(a, g.name)}>
+                              <span className="w-16 shrink-0 truncate text-[10px] text-slate-500">{g.name}</span>
                               <span className="h-3.5 flex-1 overflow-hidden rounded bg-slate-100">
                                 <span className="block h-full rounded bg-gradient-to-r from-brand-500 to-violet-500" style={{ width: `${Math.max(3, (val(g) / max) * 100)}%` }} />
                               </span>
                               <span className="w-14 shrink-0 text-right font-mono text-[10px] font-semibold text-slate-700">{Math.round(val(g) * 100) / 100}</span>
-                            </div>
+                            </button>
                           ))}
                         </div>
                       )}
@@ -802,6 +854,34 @@ export default function AssistPanel() {
           </div>
         </div>
       </div>
+
+      {/* ChatBI 下钻明细弹层：点击图表分组 → 该分组的对象列表（真实明细，可溯源） */}
+      {(drill || drillLoading) && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/40 p-6" onClick={() => { setDrill(null); setDrillLoading(false) }}>
+          <div className="flex max-h-[70vh] w-[400px] max-w-full flex-col rounded-xl bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
+              <div>
+                <div className="text-sm font-semibold text-slate-800">{drill?.title ?? '加载中…'}</div>
+                <div className="text-[11px] text-slate-400">{drill && `命中 ${drill.total} 个对象 · 最多展示 30 条 · 来源 /objects?keyword=`}</div>
+              </div>
+              <button className="rounded-md p-1 text-slate-400 hover:bg-slate-100" onClick={() => { setDrill(null); setDrillLoading(false) }}><X size={15} /></button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-3">
+              {drillLoading && <div className="flex items-center gap-2 py-6 text-xs text-slate-400"><Loader2 size={13} className="animate-spin" /> 检索对象明细…</div>}
+              {drill && !drillLoading && (drill.rows.length === 0
+                ? <div className="py-6 text-center text-xs text-slate-400">没有命中对象（该分组值可能不在对象字段文本中）</div>
+                : <div className="space-y-1.5">
+                    {drill.rows.map((r) => (
+                      <div key={r.id} className="rounded-lg border border-slate-100 px-2.5 py-1.5">
+                        <div className="text-xs font-medium text-slate-700">{r.name}</div>
+                        {r.sub && <div className="mt-0.5 truncate font-mono text-[10px] text-slate-400" title={r.sub}>{r.sub}</div>}
+                      </div>
+                    ))}
+                  </div>)}
+            </div>
+          </div>
+        </div>
+      )}
     </>
   )
 }

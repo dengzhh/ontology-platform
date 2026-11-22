@@ -58,9 +58,9 @@ export default function GraphCanvas({
         const my = (a.y + b.y) / 2
         return (
           <g key={i}>
-            <path d={`M ${a.x} ${a.y} Q ${mx + (a.y - b.y) * 0.12} ${my}, ${b.x} ${b.y}`} fill="none" stroke="#cbd5e1" strokeWidth={1.5} />
+            <path d={`M ${a.x} ${a.y} Q ${mx + (a.y - b.y) * 0.12} ${my}, ${b.x} ${b.y}`} fill="none" stroke="#94a3b8" strokeWidth={2.4} />
             {l.label && (
-              <text x={mx} y={my - 4} textAnchor="middle" fontSize={9.5} fill="#94a3b8" paintOrder="stroke" stroke="#fff" strokeWidth={3}>
+              <text x={mx} y={my - 4} textAnchor="middle" fontSize={11} fill="#64748b" paintOrder="stroke" stroke="#fff" strokeWidth={3}>
                 {l.label}
               </text>
             )}
@@ -73,14 +73,14 @@ export default function GraphCanvas({
         const label = n.label.length > 12 ? n.label.slice(0, 11) + '…' : n.label
         return (
           <g key={n.id} data-node={n.id}>
-            <circle cx={n.x} cy={n.y} r={r} fill={n.color ?? '#3b82f6'} fillOpacity={0.14} />
-            <circle cx={n.x} cy={n.y} r={r * 0.55} fill={n.color ?? '#3b82f6'} stroke="#fff" strokeWidth={2} />
+            <circle cx={n.x} cy={n.y} r={r} fill={n.color ?? '#3b82f6'} fillOpacity={0.16} />
+            <circle cx={n.x} cy={n.y} r={r * 0.55} fill={n.color ?? '#3b82f6'} stroke="#fff" strokeWidth={2.5} />
             {/* 白底描边 halo：文字压在连线/相邻节点上时仍清晰 */}
-            <text x={n.x} y={n.y + r + 15} textAnchor="middle" fontSize={11.5} fontWeight={600} fill="#334155" paintOrder="stroke" stroke="#fff" strokeWidth={3.5}>
+            <text x={n.x} y={n.y + r + 16} textAnchor="middle" fontSize={13} fontWeight={600} fill="#334155" paintOrder="stroke" stroke="#fff" strokeWidth={3.5}>
               {label}
             </text>
             {n.sub && (
-              <text x={n.x} y={n.y + r + 28} textAnchor="middle" fontSize={9.5} fill="#94a3b8" paintOrder="stroke" stroke="#fff" strokeWidth={3}>
+              <text x={n.x} y={n.y + r + 31} textAnchor="middle" fontSize={11} fill="#64748b" paintOrder="stroke" stroke="#fff" strokeWidth={3}>
                 {n.sub}
               </text>
             )}
@@ -93,7 +93,7 @@ export default function GraphCanvas({
   if (zoomable) {
     return (
       <div className={cn('relative', className)}>
-        <ZoomableCanvas width={width} height={height} viewportHeight={viewportHeight ?? 560} className="canvas-grid">
+        <ZoomableCanvas width={width} height={height} viewportHeight={viewportHeight ?? 560} className="canvas-grid" initialScale={1.15}>
           {svgContent}
         </ZoomableCanvas>
         {legend && (

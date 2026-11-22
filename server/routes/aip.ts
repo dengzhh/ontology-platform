@@ -154,7 +154,7 @@ aipRoutes.post('/agents/:id/chat', async (c) => {
   ].filter(Boolean).join('\n')
 
   try {
-    const reply = await llmComplete(system, [message, ...history.map((h) => `${h.role === 'user' ? '用户' : '助手'}: ${h.content}`).join('\n'), toolContext].join('\n\n'))
+    const reply = await llmComplete(system, [message, ...history.map((h) => `${h.role === 'user' ? '用户' : '助手'}: ${h.content}`).join('\n'), toolContext].join('\n\n'), { scene: 'aip_agent', userId: user.id, userName: user.name, spaceId: space.id, conversationId: id })
     const aiMsgId = `AM-${Date.now().toString(36)}a`
     db.insert(tables.aiMessages).values({ id: aiMsgId, conversationId: id, role: 'assistant', content: reply, createdAt: Date.now() }).run()
     return c.json({ reply, messageId: aiMsgId, toolCalls: toolResults.map((r) => ({ name: r.name, result: r.result.slice(0, 80) })) })
@@ -231,6 +231,7 @@ aipRoutes.post('/threads', async (c) => {
     const reply = await llmComplete(
       '你是企业文档分析助手。根据给定任务和文档内容，输出结构化的分析结果。使用简洁的中文，用标题和列表组织内容。',
       `任务：${body.taskPrompt}\n\n参考文档：\n${contextNote}`,
+      { scene: 'doc_analysis', userId: user.id, userName: user.name, spaceId: space.id, conversationId: id },
     )
     db.insert(tables.aiMessages).values({ id: `AM-${now.toString(36)}a`, conversationId: id, role: 'assistant', content: reply, createdAt: now }).run()
     audit(user, '运行文档分析', body.title)
@@ -261,6 +262,7 @@ aipRoutes.post('/threads/:id/retry', async (c) => {
     const reply = await llmComplete(
       '你是企业文档分析助手。根据给定任务和文档内容，输出结构化的分析结果。使用简洁的中文，用标题和列表组织内容。',
       `任务：${task}\n\n参考文档：\n${context}`,
+      { scene: 'doc_analysis', userId: user.id, userName: user.name, spaceId: space.id, conversationId: id },
     )
     db.insert(tables.aiMessages).values({ id: `AM-${now.toString(36)}a`, conversationId: id, role: 'assistant', content: reply, createdAt: now }).run()
     audit(user, '重试文档分析', conv.title)
@@ -291,6 +293,7 @@ aipRoutes.post('/threads/:id/followup', async (c) => {
     const reply = await llmComplete(
       '你是企业文档分析助手。基于给定文档上下文与历史对话回答用户的追问；引用文档内容时注明出处，不确定就明确说明，不要编造。使用简洁中文。',
       `文档上下文：\n${context}\n\n历史对话：\n${history}\n\n用户追问：${body.question.trim()}`,
+      { scene: 'doc_analysis', userId: user.id, userName: user.name, spaceId: space.id, conversationId: id },
     )
     db.insert(tables.aiMessages).values({ id: `AM-${now.toString(36)}u`, conversationId: id, role: 'user', content: body.question.trim(), createdAt: now }).run()
     db.insert(tables.aiMessages).values({ id: `AM-${now.toString(36)}a`, conversationId: id, role: 'assistant', content: reply, createdAt: now + 1 }).run()
